@@ -17,7 +17,7 @@ class Enemy:
         "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
     }
     
-    def __init__(self, path, enemy_type="Drone", wave_num=1):
+    def __init__(self, path, enemy_type="Drone", wave_num=1, is_egrem_spawned=False):
         self.path = path
         self.position_index = 0
         self.enemy_type = enemy_type if enemy_type in self.TYPES else "Drone"
@@ -25,12 +25,13 @@ class Enemy:
         self.alive = True
         self.leaked = False
         self.move_counter = 0
+        self.is_egrem_spawned = is_egrem_spawned
         self._calculate_stats()
     
     def _calculate_stats(self):
         base_stats = self.TYPES.get(self.enemy_type, self.TYPES["Drone"])
         difficulty = base_stats["difficulty"]
-        wave_scale = 1.0 + (self.wave_num - 1) * 0.2 * difficulty
+        wave_scale = 1.0 + (self.wave_num - 1) * 3.5 * difficulty
         self.max_health = int(base_stats["health"] * wave_scale)
         self.health = self.max_health
         self.move_speed = base_stats["speed"]
@@ -113,6 +114,18 @@ UPGRADE_SYNERGY = [k for k in UPGRADE_DEFS if not k.startswith("wild")]
 UPGRADE_WILDCARD = [k for k in UPGRADE_DEFS if k.startswith("wild")]
 
 # ==============================
+# EGREM SPAWNING CONFIG
+# ==============================
+# Maps tower types to spawn parameters: {enemy_type, spawn_count, spawn_interval_frames}
+EGREM_SPAWN_CONFIG = {
+    "Transistor": {"enemy_type": "Drone",       "base_spawn": 2, "spawn_interval": 90, "wave_scale": 1.0},
+    "Capacitor":  {"enemy_type": "Harvester",   "base_spawn": 1, "spawn_interval": 120, "wave_scale": 1.2},
+    "Resistor":   {"enemy_type": "Drone",       "base_spawn": 3, "spawn_interval": 60, "wave_scale": 0.8},
+    "Diode":      {"enemy_type": "Scout",       "base_spawn": 2, "spawn_interval": 75, "wave_scale": 1.1},
+    "Inductor":   {"enemy_type": "Adaptor",     "base_spawn": 1, "spawn_interval": 100, "wave_scale": 1.3},
+}
+
+# ==============================
 # TOWER (Hardware + Software Upgrades)
 # ==============================
 class Tower:
@@ -130,6 +143,7 @@ class Tower:
         self.y = y
         self.base_type = tower_type if tower_type in self.BASE_TYPES else "Transistor"
         self.parents = parents or []
+        self.merge_generation = 0  # Track tier: 0=T0, 1=T1, 2=T2, etc.
         self.cooldown = 0
         self.last_shot_target = None
         self.last_shot_frame = 0
@@ -138,6 +152,12 @@ class Tower:
         self.heat = 0.0             # NEW: heat buildup mechanic
         self.max_heat = 10.0
         self.status_effects = {}    # e.g. {'stun': 120 frames}
+        
+        # Egrem spawning state (only set for Egrem towers)
+        self.egrem_source_types = []  # List of base_type strings that created this egrem
+        self.egrem_spawn_timer = 0    # Frames until next spawn
+        self.egrem_spawn_interval = 0 # Interval between spawns
+        
         self._calculate_stats()
 
     def get_traits(self):
@@ -153,7 +173,7 @@ class Tower:
 
     def _calculate_stats(self):
         base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Transistor"])
-        merge_level = len(self.parents) // 2
+        merge_level = self.merge_generation  # Use merge_generation for tier-based calculation
         boost = 1.0 + merge_level * 0.3
 
         self.dmg = int(base["dmg"] * boost)
@@ -176,16 +196,39 @@ class Tower:
                 # could add more here
 
     def get_merge_tier(self):
-        return len(self.parents) // 2
+        return self.merge_generation
 
     @staticmethod
     def merge_towers(tower1, tower2):
         new_tower = Tower(0, 0, tower_type=tower1.base_type)
+        new_tower.merge_generation = tower1.merge_generation + 1  # Increment tier
         new_tower.parents = tower1.parents + tower2.parents + [tower1.base_type, tower2.base_type]
         new_tower.gold_invested = tower1.gold_invested + tower2.gold_invested
         new_tower.upgrades = list(set(tower1.upgrades + tower2.upgrades))  # combine unique upgrades
         new_tower._calculate_stats()
         return new_tower
+
+    def _configure_egrem_spawning(self):
+        """Configure egrem spawning based on source tower types."""
+        if not self.egrem_source_types or len(self.egrem_source_types) < 2:
+            return
+        
+        # Average spawn parameters from both source towers
+        total_spawn_count = 0
+        total_spawn_interval = 0
+        enemy_types = []
+        
+        for tower_type in self.egrem_source_types:
+            config = EGREM_SPAWN_CONFIG.get(tower_type, {})
+            total_spawn_count += config.get("base_spawn", 1)
+            total_spawn_interval += config.get("spawn_interval", 90)
+            enemy_types.append(config.get("enemy_type", "Drone"))
+        
+        # Average the values
+        self.egrem_spawn_count = max(1, total_spawn_count // 2)
+        self.egrem_spawn_interval = max(30, total_spawn_interval // 2)
+        self.egrem_enemy_types = enemy_types  # Can spawn mixed types
+        self.egrem_spawn_timer = 0  # Spawn immediately on first frame of wave
 
     def update(self, enemies, current_frame, game):
         if 'stun' in self.status_effects and self.status_effects['stun'] > 0:
@@ -204,6 +247,14 @@ class Tower:
             # could add visual red glow here
 
         if self.base_type == "Egrem":
+            # Egrem towers spawn enemies on timer
+            if hasattr(self, 'egrem_spawn_interval') and self.egrem_spawn_interval > 0:
+                self.egrem_spawn_timer -= 1
+                if self.egrem_spawn_timer <= 0:
+                    self.egrem_spawn_timer = self.egrem_spawn_interval
+                    for _ in range(self.egrem_spawn_count):
+                        enemy_type = random.choice(self.egrem_enemy_types)
+                        game.spawn_enemy_at_position(enemy_type, self.x, self.y, game.round_num)
             return None  # Egrem towers spawn enemies; they don't attack
         target = None
         best_dist = float('inf')
@@ -260,6 +311,7 @@ class Game:
         self.merge_tower_1 = None
         self.merge_tower_2 = None
         self.merge_preview = None
+        self.current_merge_cost = 0  # Display cost of current merge/egrem
         self.game_over = False
         self.final_wave = 1
         self.final_gold = 50
@@ -277,6 +329,7 @@ class Game:
         self.egrem_total_spent = 0
         self.egrem_flash_until = 0    # frame when flash ends
         self.egrem_flash_bench_idx = None
+        self.auto_mode = False  # Auto wave toggle
         self.generate_shop()
 
     def regenerate_map(self, min_len):
@@ -325,6 +378,49 @@ class Game:
         self.generate_shop()
         return True
 
+    def get_merge_preview_info(self):
+        """Return dict with merge preview drawing info, or None if not active."""
+        if not (self.merge_preview and self.merge_tower_1 is not None and self.merge_tower_2 is not None):
+            return None
+        idx1, idx2 = min(self.merge_tower_1, self.merge_tower_2), max(self.merge_tower_1, self.merge_tower_2)
+        return {
+            "idx1": idx1,
+            "idx2": idx2,
+            "is_egrem": False,
+            "label": "Merge",
+            "cost": self.current_merge_cost,
+            "line_color_outer": (90, 75, 0),
+            "line_color_inner": (255, 230, 0),
+            "line_width_outer": 8,
+            "line_width_inner": 5,
+            "label_bg_color": (255, 255, 200),
+            "label_border_color": (255, 200, 0),
+            "label_text_color": (255, 255, 255),
+            "cost_color": (255, 255, 200),
+        }
+
+    def get_egrem_preview_info(self):
+        """Return dict with egrem preview drawing info, or None if not active."""
+        if not (self.egrem_preview and self.merge_tower_1 is not None and self.merge_tower_2 is not None):
+            return None
+        idx1, idx2 = min(self.merge_tower_1, self.merge_tower_2), max(self.merge_tower_1, self.merge_tower_2)
+        return {
+            "idx1": idx1,
+            "idx2": idx2,
+            "is_egrem": True,
+            "label": "egrem",
+            "cost": self.current_merge_cost,
+            "line_color_outer": (0, 0, 0),
+            "line_color_inner_1": (80, 255, 80),
+            "line_color_inner_2": (255, 80, 80),
+            "line_width_outer": 9,
+            "line_width_inner": 5,
+            "label_bg_color": (40, 40, 45),
+            "label_border_color": (80, 255, 80),
+            "label_text_color": (255, 255, 255),
+            "cost_color": (200, 200, 200),
+        }
+
     def reset_egrem_consecutive(self):
         """Call when user does anything other than another egrem attempt (click elsewhere, cancel, confirm merge, etc.)."""
         self.egrem_consecutive = 0
@@ -334,7 +430,8 @@ class Game:
             return False
         if self.merge_tower_1 is None:
             self.merge_tower_1 = bench_idx
-            self.selected_tower = bench_idx
+            self.selected_tower = bench_idx  # Set for placement preview
+            self.current_merge_cost = 0
             self.reset_egrem_consecutive()
             return True
         # Clicking an already-selected card deselects it
@@ -343,19 +440,24 @@ class Game:
             self.selected_tower = None
             self.merge_preview = None
             self.egrem_preview = False
+            self.current_merge_cost = 0
             self.reset_egrem_consecutive()
             return True
         if self.merge_tower_2 is not None and bench_idx == self.merge_tower_2:
             self.merge_tower_2 = None
             self.merge_preview = None
             self.egrem_preview = False
+            self.current_merge_cost = 0
             self.reset_egrem_consecutive()
             return True
         t1 = self.bench[self.merge_tower_1]
         t2 = self.bench[bench_idx]
-        same_tier = len(t1.parents) == len(t2.parents)
+        same_tier = t1.get_merge_tier() == t2.get_merge_tier()
         # Third card: replace second selection (keep first), then same-tier → preview, different → egrem
         self.merge_tower_2 = bench_idx
+        tier1 = t1.get_merge_tier()
+        tier2 = t2.get_merge_tier()
+        self.current_merge_cost = (tier1 * 10) + (tier2 * 10)
         if same_tier:
             self.merge_preview = Tower.merge_towers(t1, t2)
             self.egrem_preview = False
@@ -365,7 +467,7 @@ class Game:
         return self._try_egrem(frame)
 
     def _try_egrem(self, frame):
-        """Attempt egrem (wrong-tier merge). Cost (tier1*10 + tier2*10) * 1.25; at 100 total spent, create Egrem tower."""
+        """Attempt egrem (wrong-tier merge). Cost (tier1*10 + tier2*10) * 1.25; shows preview for confirmation."""
         if self.merge_tower_1 is None or self.merge_tower_2 is None:
             return False
         t1 = self.bench[self.merge_tower_1]
@@ -379,10 +481,14 @@ class Game:
         tier1 = t1.get_merge_tier()
         tier2 = t2.get_merge_tier()
         base_cost = (tier1 * 10) + (tier2 * 10)
+        # Ensure minimum cost of 5 even for T0+T0
+        base_cost = max(5, base_cost)
         cost = int(base_cost * 1.25)
+        self.current_merge_cost = cost  # Display the egrem cost
         if self.gold < cost:
             self.merge_tower_2 = None
             self.egrem_preview = False
+            self.current_merge_cost = 0
             return False
         self.gold -= cost
         self.egrem_consecutive += 1
@@ -391,8 +497,6 @@ class Game:
         self.egrem_flash_until = frame + 120  # 2 seconds
         self.egrem_flash_bench_idx = self.merge_tower_2
         self.merge_preview = None
-        if self.egrem_total_spent >= 100:
-            self._complete_egrem()
         return True
 
     def _complete_egrem(self):
@@ -401,17 +505,33 @@ class Game:
         t1, t2 = self.bench[idx1], self.bench[idx2]
         egrem = Tower(0, 0, tower_type="Egrem")
         egrem.gold_invested = (t1.gold_invested if t1 else 0) + (t2.gold_invested if t2 else 0)
-        self.bench[idx1] = egrem
+        
+        # Configure egrem spawning based on source towers
+        egrem.egrem_source_types = [t1.base_type, t2.base_type]
+        egrem._configure_egrem_spawning()
+        
+        # Remove both source towers from bench
+        self.bench[idx1] = None
         self.bench[idx2] = None
-        self.merge_tower_1 = self.merge_tower_2 = None
+        
+        # Place egrem tower in first unoccupied slot
+        for i in range(10):
+            if self.bench[i] is None:
+                self.bench[i] = egrem
+                break
+        
+        # Deselect all cards after egrem
+        self.merge_tower_1 = None
+        self.merge_tower_2 = None
         self.merge_preview = None
         self.egrem_preview = False
+        self.selected_tower = None
+        self.current_merge_cost = 0
         self.egrem_consecutive = 0
         self.egrem_combo = None
         self.egrem_total_spent = 0
         self.egrem_flash_until = 0
         self.egrem_flash_bench_idx = None
-        self.selected_tower = None
 
     def confirm_merge(self):
         if None in (self.merge_tower_1, self.merge_tower_2, self.merge_preview):
@@ -426,13 +546,29 @@ class Game:
         self.gold -= cost
         self.reset_egrem_consecutive()
         self.merge_preview.gold_invested = (t1.gold_invested if t1 else 0) + (t2.gold_invested if t2 else 0) + cost
-        self.bench[idx1] = self.merge_preview
+        
+        # Remove both source towers from bench
+        self.bench[idx1] = None
         self.bench[idx2] = None
-        self.merge_tower_1 = self.merge_tower_2 = self.merge_preview = self.selected_tower = None
+        
+        # Place merged tower in first unoccupied slot
+        for i in range(10):
+            if self.bench[i] is None:
+                self.bench[i] = self.merge_preview
+                break
+        
+        # Deselect all cards after merge
+        self.merge_tower_1 = None
+        self.merge_tower_2 = None
+        self.merge_preview = None
+        self.selected_tower = None
+        self.current_merge_cost = 0
+        self.egrem_preview = False
         return True
 
     def cancel_merge(self):
         self.merge_tower_1 = self.merge_tower_2 = self.merge_preview = self.selected_tower = None
+        self.current_merge_cost = 0
         self.egrem_preview = False
         self.reset_egrem_consecutive()
 
@@ -540,6 +676,11 @@ class Game:
         if self.spawn_queue and self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0
             self.enemies.append(self.spawn_queue.pop(0))
+        
+        # Update towers (including egrem spawning)
+        for t in self.towers:
+            t.update(self.enemies, frame, self)
+        
         # Update enemy grid
         for row in self.enemy_grid:
             for cell in row:
@@ -548,8 +689,7 @@ class Game:
             pos = e.get_position()
             if pos:
                 self.enemy_grid[pos[1]][pos[0]].append(e)
-        for t in self.towers:
-            t.update(self.enemies, frame, self)
+        
         for e in self.enemies[:]:
             e.move()
             if e.leaked:
@@ -567,13 +707,29 @@ class Game:
             self.wave_active = False
         if self.wave_active and not self.enemies and not self.spawn_queue:
             bonus = (len(self.towers) * 3 + self.round_num * 4) // 2   # scaled back ~half
-            interest = self.gold // 20   # was // 10
-            self.gold += bonus + interest
-            self.wave_bonus_text = f"+{bonus} bonus +{interest} interest"
+            self.gold += bonus
+            self.wave_bonus_text = f"+{bonus} bonus"
             self.wave_bonus_show_until = frame + 240
             self.round_num += 1
             self.wave_active = False
-            self.generate_shop()
+            # Auto-start next wave if auto mode is enabled
+            if self.auto_mode:
+                self.start_next_wave()
+
+    def spawn_enemy_at_position(self, enemy_type, x, y, wave_num=1):
+        """Spawn an enemy at a specific grid position (for egrem towers)."""
+        if 0 <= x < self.width and 0 <= y < self.height:
+            # Find the closest path point to this position
+            closest_pos = min(self.path, key=lambda p: abs(p[0]-x) + abs(p[1]-y))
+            closest_idx = self.path.index(closest_pos)
+            enemy = Enemy(self.path[closest_idx:], enemy_type, wave_num, is_egrem_spawned=True)
+            self.enemies.append(enemy)
+            # Add to enemy_grid immediately so towers can target it
+            pos = enemy.get_position()
+            if pos and 0 <= pos[0] < self.width and 0 <= pos[1] < self.height:
+                self.enemy_grid[pos[1]][pos[0]].append(enemy)
+            return enemy
+        return None
 
 
 # ==============================
@@ -610,6 +766,7 @@ TEXT = (220,220,220)
 
 font = pygame.font.SysFont("consolas", 16)
 font_s = pygame.font.SysFont("consolas", 12)
+font_merge = pygame.font.SysFont("consolas", 20)  # Larger font for merge/egrem labels
 
 tower_colors = {
     "Transistor": (70,130,255),
@@ -654,14 +811,17 @@ while running:
                             game.upgrade_dialog_tower = None
                         elif close_r.collidepoint(mx, my):
                             game.upgrade_dialog_tower = None
-                # Right panel: Play/Pause, Next Wave (only when not in dialog area)
+                # Right panel: Play/Pause, Next Wave, Auto (only when not in dialog area)
                 elif mx >= GRID_W:
                     play_rect = pygame.Rect(GRID_W + 14, 96, 100, 26)
                     next_rect = pygame.Rect(GRID_W + 14, 128, 100, 26)
+                    auto_rect = pygame.Rect(GRID_W + 14, 160, 100, 26)
                     if play_rect.collidepoint(mx, my):
                         game.paused = not game.paused
                     elif next_rect.collidepoint(mx, my):
                         game.start_next_wave()
+                    elif auto_rect.collidepoint(mx, my):
+                        game.auto_mode = not game.auto_mode
                 # Shop
                 elif my < SHOP_H:
                     for i in range(5):
@@ -675,30 +835,45 @@ while running:
                         game.reroll_shop()
                 # Bench
                 elif SHOP_H <= my < SHOP_H + BENCH_H:
-                    clicked_on_bench_card = False
-                    for i in range(10):
-                        x = 15 + i * 68
-                        y = SHOP_H + 15
-                        if x <= mx <= x+60 and y <= my <= y+90:
-                            if game.bench[i]:
-                                clicked_on_bench_card = True
-                                game.select_for_merge(i, frame)
-                    # Only handle Merge / cancel when click was NOT on a bench card (e.g. clicked gap or Merge label)
-                    if (game.merge_preview or game.egrem_preview) and not clicked_on_bench_card:
-                        if game.merge_preview:
-                            idx1, idx2 = game.merge_tower_1, game.merge_tower_2
-                            cx1 = 45 + idx1 * 68
-                            cx2 = 45 + idx2 * 68
+                    # Check for merge/egrem clicks FIRST (before bench card clicks)
+                    handled_merge = False
+                    if game.merge_preview or game.egrem_preview:
+                        idx1, idx2 = game.merge_tower_1, game.merge_tower_2
+                        if idx1 is not None and idx2 is not None:
+                            cx1 = 45 + min(idx1, idx2) * 68
+                            cx2 = 45 + max(idx1, idx2) * 68
                             mid_x = (cx1 + cx2) // 2
                             mid_y = SHOP_H + 60
-                            merge_txt = font.render("Merge", True, (0, 0, 0))
-                            merge_rect = merge_txt.get_rect(center=(mid_x, mid_y))
-                            merge_rect.inflate_ip(14, 10)
-                            if merge_rect.collidepoint(mx, my):
-                                game.confirm_merge()
-                            else:
-                                game.cancel_merge()
-                        else:
+                            
+                            if game.merge_preview:
+                                merge_txt = font_merge.render("Merge", True, (0, 0, 0))
+                                merge_rect = merge_txt.get_rect(center=(mid_x, mid_y))
+                                merge_rect.inflate_ip(18, 13)  # 25% larger clickable area
+                                if merge_rect.collidepoint(mx, my):
+                                    game.confirm_merge()
+                                    handled_merge = True
+                            elif game.egrem_preview:
+                                egrem_txt = font_merge.render("egrem", True, (0, 0, 0))
+                                egrem_rect = egrem_txt.get_rect(center=(mid_x, mid_y))
+                                egrem_rect.inflate_ip(18, 13)  # 25% larger clickable area (matching merge)
+                                if egrem_rect.collidepoint(mx, my):
+                                    # Confirm egrem by completing it
+                                    game._complete_egrem()
+                                    handled_merge = True
+                    
+                    # Only check bench cards if merge/egrem wasn't handled
+                    if not handled_merge:
+                        clicked_on_bench_card = False
+                        for i in range(10):
+                            x = 15 + i * 68
+                            y = SHOP_H + 15
+                            if x <= mx <= x+60 and y <= my <= y+90:
+                                if game.bench[i]:
+                                    clicked_on_bench_card = True
+                                    game.select_for_merge(i, frame)
+                        
+                        # Handle cancel if clicked outside merge/egrem area
+                        if (game.merge_preview or game.egrem_preview) and not clicked_on_bench_card:
                             game.cancel_merge()
                 # Grid: place from bench, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
@@ -789,15 +964,18 @@ while running:
             s.fill((255, 80, 80))
             screen.blit(s, (x, y))
 
-    # Merge preview: electrified zig-zag yellow line between the two selected cards + "Merge" label in center
-    if game.merge_preview and game.merge_tower_1 is not None and game.merge_tower_2 is not None:
-        idx1, idx2 = min(game.merge_tower_1, game.merge_tower_2), max(game.merge_tower_1, game.merge_tower_2)
-        # Card center X coords (card is 60 wide, left edge 15 + i*68)
+    # Merge/Egrem preview rendering
+    for preview_info in [game.get_merge_preview_info(), game.get_egrem_preview_info()]:
+        if preview_info is None:
+            continue
+        
+        idx1, idx2 = preview_info["idx1"], preview_info["idx2"]
         cx1 = int(15 + idx1 * 68 + 30)
         cx2 = int(15 + idx2 * 68 + 30)
         cy = int(SHOP_H + 15 + 45)
-        # Zig-zag: 5 points (start, 3 jags, end) with perpendicular offset
-        amp = 16
+        
+        # Zig-zag points
+        amp = 20
         dx = cx2 - cx1
         pts = [
             (cx1, cy),
@@ -806,46 +984,37 @@ while running:
             (cx1 + (3 * dx) // 4, cy + amp),
             (cx2, cy),
         ]
-        # Glow then bright yellow zig-zag (drawn on top of bench cards)
+        
+        # Draw outer line (glow/outline)
         for i in range(len(pts) - 1):
-            pygame.draw.line(screen, (90, 75, 0), pts[i], pts[i + 1], 6)
+            pygame.draw.line(screen, preview_info["line_color_outer"], pts[i], pts[i + 1], preview_info["line_width_outer"])
+        
+        # Draw inner line (colored)
         for i in range(len(pts) - 1):
-            pygame.draw.line(screen, (255, 230, 0), pts[i], pts[i + 1], 4)
-        # "Merge" label at midpoint: small background rect, white outline text, black fill
+            if preview_info["is_egrem"] and "line_color_inner_1" in preview_info:
+                # Egrem alternates colors
+                c = preview_info["line_color_inner_1"] if i % 2 == 0 else preview_info["line_color_inner_2"]
+            else:
+                c = preview_info["line_color_inner"]
+            pygame.draw.line(screen, c, pts[i], pts[i + 1], preview_info["line_width_inner"])
+        
+        # Draw label
         mid_x, mid_y = (cx1 + cx2) // 2, cy
-        merge_surf = font.render("Merge", True, (0, 0, 0))
-        merge_rect = merge_surf.get_rect(center=(mid_x, mid_y))
-        merge_rect.inflate_ip(10, 6)
-        pygame.draw.rect(screen, (255, 255, 200), merge_rect)
-        pygame.draw.rect(screen, (255, 200, 0), merge_rect, 1)
+        label_surf = font_merge.render(preview_info["label"], True, (0, 0, 0))
+        label_rect = label_surf.get_rect(center=(mid_x, mid_y))
+        label_rect.inflate_ip(13, 8)
+        pygame.draw.rect(screen, preview_info["label_bg_color"], label_rect)
+        pygame.draw.rect(screen, preview_info["label_border_color"], label_rect, 2)
+        
+        # Draw label outline
         for ox, oy in [(-1,-1),(-1,1),(1,-1),(1,1),(0,-1),(0,1),(-1,0),(1,0)]:
-            screen.blit(font.render("Merge", True, (255, 255, 255)), (merge_rect.centerx - merge_surf.get_width()//2 + ox, merge_rect.centery - merge_surf.get_height()//2 + oy))
-        screen.blit(merge_surf, (merge_rect.centerx - merge_surf.get_width()//2, merge_rect.centery - merge_surf.get_height()//2))
-
-    # Egrem preview: green/red zig-zag with black outline + "egrem" text (wrong-tier merge attempt)
-    if game.egrem_preview and game.merge_tower_1 is not None and game.merge_tower_2 is not None:
-        idx1, idx2 = min(game.merge_tower_1, game.merge_tower_2), max(game.merge_tower_1, game.merge_tower_2)
-        cx1 = int(15 + idx1 * 68 + 30)
-        cx2 = int(15 + idx2 * 68 + 30)
-        cy = int(SHOP_H + 15 + 45)
-        amp = 16
-        dx = cx2 - cx1
-        pts = [
-            (cx1, cy), (cx1 + dx // 4, cy + amp), (cx1 + dx // 2, cy - amp),
-            (cx1 + (3 * dx) // 4, cy + amp), (cx2, cy),
-        ]
-        for i in range(len(pts) - 1):
-            pygame.draw.line(screen, (0, 0, 0), pts[i], pts[i + 1], 7)
-        for i in range(len(pts) - 1):
-            c = (80, 255, 80) if i % 2 == 0 else (255, 80, 80)
-            pygame.draw.line(screen, c, pts[i], pts[i + 1], 4)
-        mid_x, mid_y = (cx1 + cx2) // 2, cy
-        egrem_surf = font.render("egrem", True, (0, 0, 0))
-        egrem_rect = egrem_surf.get_rect(center=(mid_x, mid_y))
-        for ox, oy in [(-1,-1),(-1,1),(1,-1),(1,1),(0,-1),(0,1),(-1,0),(1,0)]:
-            screen.blit(font.render("egrem", True, (0, 0, 0)), (egrem_rect.x + ox, egrem_rect.y + oy))
-        pygame.draw.rect(screen, (40, 40, 45), egrem_rect.inflate(8, 4))
-        screen.blit(font.render("egrem", True, (255, 255, 255)), (egrem_rect.centerx - egrem_surf.get_width()//2, egrem_rect.centery - egrem_surf.get_height()//2))
+            screen.blit(font_merge.render(preview_info["label"], True, (255, 255, 255)), 
+                       (label_rect.centerx - label_surf.get_width()//2 + ox, label_rect.centery - label_surf.get_height()//2 + oy))
+        screen.blit(label_surf, (label_rect.centerx - label_surf.get_width()//2, label_rect.centery - label_surf.get_height()//2))
+        
+        # Draw cost below label
+        cost_surf = font_s.render(f"${preview_info['cost']}", True, preview_info["cost_color"])
+        screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
 
     # Right panel: stats + controls
     pygame.draw.rect(screen, PANEL_BG, (GRID_W, 0, PANEL_RIGHT_W, SHOP_H + BENCH_H))
@@ -865,6 +1034,12 @@ while running:
     pygame.draw.rect(screen, PANEL_BTN, next_rect)
     pygame.draw.rect(screen, TEXT, next_rect, 1)
     screen.blit(font_s.render("Next Wave", True, TEXT), (px + 14, 132))
+    # Auto toggle button
+    auto_rect = pygame.Rect(px, 160, 100, 26)
+    col_auto = PANEL_BTN_SEL if game.auto_mode else PANEL_BTN
+    pygame.draw.rect(screen, col_auto, auto_rect)
+    pygame.draw.rect(screen, TEXT, auto_rect, 1)
+    screen.blit(font_s.render("Auto " + ("ON" if game.auto_mode else "OFF"), True, TEXT), (px + 18, 164))
 
     # Upgrade dialog (when a placed tower is selected)
     if game.upgrade_dialog_tower is not None:
@@ -949,7 +1124,8 @@ while running:
         if pos:
             ex,ey = pos
             c = (ex*TILE +20, grid_y + ey*TILE +20)
-            pygame.draw.circle(screen, ENEMY, c, 13)
+            enemy_color = (60, 220, 60) if e.is_egrem_spawned else ENEMY
+            pygame.draw.circle(screen, enemy_color, c, 13)
             ratio = max(0, e.health / e.max_health)
             pygame.draw.rect(screen, HP_BG, (c[0]-20, c[1]-30, 40, 6))
             pygame.draw.rect(screen, HP_FILL, (c[0]-20, c[1]-30, 40*ratio, 6))
