@@ -24,8 +24,9 @@ class Enemy:
         self.wave_num = wave_num
         self.alive = True
         self.leaked = False
-        self.move_counter = 0
+        self.move_counter = 0.0
         self.is_egrem_spawned = is_egrem_spawned
+        self.debuffs = {}  # debuff_type: {'amount': val, 'frames_left': int}
         self._calculate_stats()
     
     def _calculate_stats(self):
@@ -42,9 +43,16 @@ class Enemy:
     def move(self):
         if not self.alive or self.leaked:
             return
-        self.move_counter += 1
+        increment = 1.0
+        if 'slow' in self.debuffs:
+            slow_pct = self.debuffs['slow']['amount'] / 100.0
+            increment = 1.0 * (1 - slow_pct)
+            self.debuffs['slow']['frames_left'] -= 1
+            if self.debuffs['slow']['frames_left'] <= 0:
+                del self.debuffs['slow']
+        self.move_counter += increment
         if self.move_counter >= self.move_speed:
-            self.move_counter = 0
+            self.move_counter -= self.move_speed
             self.position_index += 1
             if self.position_index >= len(self.path):
                 self.leaked = True
@@ -62,28 +70,36 @@ class Enemy:
             return True
         return False
 
+    def apply_debuff(self, debuff_type, amount, duration):
+        if debuff_type not in self.debuffs:
+            self.debuffs[debuff_type] = {'amount': amount, 'frames_left': duration}
+        else:
+            if duration > self.debuffs[debuff_type]['frames_left']:
+                self.debuffs[debuff_type]['frames_left'] = duration
+            self.debuffs[debuff_type]['amount'] = max(self.debuffs[debuff_type]['amount'], amount)
+
 
 # ==============================
 # SHOP UNIT TYPES (Hardware Components)
 # ==============================
 UNIT_TYPES = [
-    {"name": "Transistor", "base_cost": 3},
-    {"name": "Capacitor",  "base_cost": 4},
-    {"name": "Resistor",   "base_cost": 3},
-    {"name": "Diode",      "base_cost": 4},
-    {"name": "Inductor",   "base_cost": 5},
+    {"name": "Neural Processor", "base_cost": 3},
+    {"name": "Plasma Capacitor",  "base_cost": 4},
+    {"name": "Thermal Regulator",   "base_cost": 3},
+    {"name": "Signal Router",      "base_cost": 4},
+    {"name": "Quantum Field Gen",   "base_cost": 5},
 ]
 
 # ==============================
 # HARDWARE TRAITS (for software synergy)
 # ==============================
 TOWER_TRAITS = {
-    "Transistor": ["switch", "logic"],
-    "Capacitor":  ["charge", "burst"],
-    "Resistor":   ["resist", "heat"],
-    "Diode":      ["block", "flow"],
-    "Inductor":   ["filter", "magnetic"],
-    "Egrem":      ["egrem", "spawner"],
+    "Neural Processor": ["switch", "logic"],
+    "Plasma Capacitor":  ["charge", "burst"],
+    "Thermal Regulator":   ["resist", "heat"],
+    "Signal Router":      ["block", "flow"],
+    "Quantum Field Gen":   ["filter", "magnetic"],
+    "Nanite Swarm":      ["egrem", "spawner"],
 }
 
 # ==============================
@@ -118,11 +134,11 @@ UPGRADE_WILDCARD = [k for k in UPGRADE_DEFS if k.startswith("wild")]
 # ==============================
 # Maps tower types to spawn parameters: {enemy_type, spawn_count, spawn_interval_frames}
 EGREM_SPAWN_CONFIG = {
-    "Transistor": {"enemy_type": "Drone",       "base_spawn": 2, "spawn_interval": 90, "wave_scale": 1.0},
-    "Capacitor":  {"enemy_type": "Harvester",   "base_spawn": 1, "spawn_interval": 120, "wave_scale": 1.2},
-    "Resistor":   {"enemy_type": "Drone",       "base_spawn": 3, "spawn_interval": 60, "wave_scale": 0.8},
-    "Diode":      {"enemy_type": "Scout",       "base_spawn": 2, "spawn_interval": 75, "wave_scale": 1.1},
-    "Inductor":   {"enemy_type": "Adaptor",     "base_spawn": 1, "spawn_interval": 100, "wave_scale": 1.3},
+    "Neural Processor": {"enemy_type": "Drone",       "base_spawn": 2, "spawn_interval": 90, "wave_scale": 1.0},
+    "Plasma Capacitor":  {"enemy_type": "Harvester",   "base_spawn": 1, "spawn_interval": 120, "wave_scale": 1.2},
+    "Thermal Regulator":   {"enemy_type": "Drone",       "base_spawn": 3, "spawn_interval": 60, "wave_scale": 0.8},
+    "Signal Router":      {"enemy_type": "Scout",       "base_spawn": 2, "spawn_interval": 75, "wave_scale": 1.1},
+    "Quantum Field Gen":   {"enemy_type": "Adaptor",     "base_spawn": 1, "spawn_interval": 100, "wave_scale": 1.3},
 }
 
 # ==============================
@@ -130,18 +146,20 @@ EGREM_SPAWN_CONFIG = {
 # ==============================
 class Tower:
     BASE_TYPES = {
-        "Transistor": {"dmg": 6,  "range": 2, "fire_rate": 1, "display": "Transistor"},
-        "Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Capacitor"},   # slow charge, big burst
-        "Resistor":   {"dmg": 4,  "range": 3, "fire_rate": 2, "display": "Resistor"},
-        "Diode":      {"dmg": 7,  "range": 4, "fire_rate": 2, "display": "Diode"},
-        "Inductor":   {"dmg": 9,  "range": 2, "fire_rate": 3, "display": "Inductor"},
-        "Egrem":      {"dmg": 0,  "range": 0, "fire_rate": 0, "display": "Egrem"},       # spawns enemies, no attack
+        "Neural Processor": {"dmg": 6,  "range": 2, "fire_rate": 1, "display": "Neural Processor", "fire_type": "TargetBeam"},
+        "Plasma Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Plasma Capacitor", "fire_type": "Ball"},   # slow charge, big burst
+        "Thermal Regulator":   {"dmg": 4,  "range": 3, "fire_rate": 2, "display": "Thermal Regulator", "fire_type": "DirectionalBeam"},
+        "Signal Router":      {"dmg": 7,  "range": 4, "fire_rate": 2, "display": "Signal Router", "fire_type": "Track"},
+        "Quantum Field Gen":   {"dmg": 2,  "range": 99, "fire_rate": 10, "display": "Quantum Field Gen", "fire_type": "Overwatch"},
+        "Nanite Swarm":      {"dmg": 0,  "range": 0, "fire_rate": 0, "display": "Nanite Swarm", "fire_type": "Spawner"},       # spawns enemies, no attack
     }
 
-    def __init__(self, x, y, tower_type="Transistor", parents=None):
+    def __init__(self, x, y, tower_type="Neural Processor", parents=None):
         self.x = x
         self.y = y
-        self.base_type = tower_type if tower_type in self.BASE_TYPES else "Transistor"
+        self.base_type = tower_type if tower_type in self.BASE_TYPES else "Neural Processor"
+        base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Neural Processor"])
+        self.fire_type = base.get("fire_type", "Ball")
         self.parents = parents or []
         self.merge_generation = 0  # Track tier: 0=T0, 1=T1, 2=T2, etc.
         self.cooldown = 0
@@ -152,6 +170,11 @@ class Tower:
         self.heat = 0.0             # NEW: heat buildup mechanic
         self.max_heat = 10.0
         self.status_effects = {}    # e.g. {'stun': 120 frames}
+        self.buffs = {}             # buff_type: {'amount': val, 'frames_left': int}
+
+        # Fire type specific attributes
+        self.beam_targets = {}      # For Beam: enemy_id: (damage_per_frame, frames_applied)
+        self.track_direction = 0    # For Track: 0=N, 1=E, 2=S, 3=W
         
         # Egrem spawning state (only set for Egrem towers)
         self.egrem_source_types = []  # List of base_type strings that created this egrem
@@ -172,7 +195,7 @@ class Tower:
         return traits
 
     def _calculate_stats(self):
-        base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Transistor"])
+        base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Neural Processor"])
         merge_level = self.merge_generation  # Use merge_generation for tier-based calculation
         boost = 1.0 + merge_level * 0.3
 
@@ -246,7 +269,7 @@ class Tower:
             self.heat = self.max_heat
             # could add visual red glow here
 
-        if self.base_type == "Egrem":
+        if self.fire_type == "Spawner":
             # Egrem towers spawn enemies on timer
             if hasattr(self, 'egrem_spawn_interval') and self.egrem_spawn_interval > 0:
                 self.egrem_spawn_timer -= 1
@@ -255,36 +278,135 @@ class Tower:
                     for _ in range(self.egrem_spawn_count):
                         enemy_type = random.choice(self.egrem_enemy_types)
                         game.spawn_enemy_at_position(enemy_type, self.x, self.y, game.round_num)
-            return None  # Egrem towers spawn enemies; they don't attack
-        target = None
-        best_dist = float('inf')
-        enemy_count = 0
-        max_enemies = 10  # Limit to improve performance
-        for dy in range(-self.range, self.range + 1):
-            for dx in range(-self.range, self.range + 1):
-                if abs(dx) + abs(dy) > self.range:
-                    continue
-                nx, ny = self.x + dx, self.y + dy
-                if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                    for e in game.enemy_grid[ny][nx]:
-                        if enemy_count >= max_enemies:
-                            break
-                        if e.alive and not e.leaked:
-                            enemy_count += 1
-                            dist = abs(dx) + abs(dy)
-                            if dist < best_dist:
-                                best_dist = dist
-                                target = e
-            if enemy_count >= max_enemies:
-                break
+            return None  # Spawner towers don't attack
 
-        if target:
-            killed = target.take_damage(self.dmg)
+        elif self.fire_type == "Radius":
+            # Damage all enemies in range each frame
+            killed_any = False
+            for dy in range(-int(self.range), int(self.range) + 1):
+                for dx in range(-int(self.range), int(self.range) + 1):
+                    if abs(dx) + abs(dy) > self.range:
+                        continue
+                    nx, ny = self.x + dx, self.y + dy
+                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
+                        for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
+                            if e.alive and not e.leaked:
+                                killed = e.take_damage(self.dmg)
+                                if killed:
+                                    killed_any = True
+            return (None, killed_any) if killed_any else None
+
+        elif self.fire_type == "Track":
+            # Damage enemies on path segments in the selected direction
+            killed_any = False
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
+            dx, dy = directions[self.track_direction]
+            # Find path segments adjacent to tower in that direction
+            adjacent_x = self.x + dx
+            adjacent_y = self.y + dy
+            if 0 <= adjacent_x < len(game.enemy_grid[0]) and 0 <= adjacent_y < len(game.enemy_grid):
+                for e in game.enemy_grid[adjacent_y][adjacent_x][:]:
+                    if e.alive and not e.leaked:
+                        killed = e.take_damage(self.dmg)
+                        if killed:
+                            killed_any = True
             self.cooldown = self.fire_rate
-            self.last_shot_target = target.get_position()
-            self.last_shot_frame = current_frame
-            return (target, killed)
-        return None
+            return (None, killed_any) if killed_any else None
+
+        elif self.fire_type == "DirectionalBeam":
+            # Shoot a beam in one direction, hitting all tiles in that line
+            killed_any = False
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
+            dx, dy = directions[self.track_direction]
+            for dist in range(1, self.range + 1):
+                nx = self.x + dx * dist
+                ny = self.y + dy * dist
+                if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
+                    for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
+                        if e.alive and not e.leaked:
+                            killed = e.take_damage(self.dmg)
+                            if killed:
+                                killed_any = True
+            self.cooldown = self.fire_rate
+            return (None, killed_any) if killed_any else None
+
+        elif self.fire_type == "Beam":
+            # Find target, damage increases over time on same target
+            target = None
+            best_dist = float('inf')
+            enemy_count = 0
+            max_enemies = 10
+            for dy in range(-int(self.range), int(self.range) + 1):
+                for dx in range(-int(self.range), int(self.range) + 1):
+                    if abs(dx) + abs(dy) > self.range:
+                        continue
+                    nx, ny = self.x + dx, self.y + dy
+                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
+                        for e in game.enemy_grid[ny][nx]:
+                            if enemy_count >= max_enemies:
+                                break
+                            if e.alive and not e.leaked:
+                                enemy_count += 1
+                                dist = abs(dx) + abs(dy)
+                                if dist < best_dist:
+                                    best_dist = dist
+                                    target = e
+                if enemy_count >= max_enemies:
+                    break
+
+            if target:
+                enemy_id = id(target)
+                if enemy_id in self.beam_targets:
+                    dmg_mult, frames = self.beam_targets[enemy_id]
+                    dmg_mult += 0.5  # increase damage over time
+                    frames += 1
+                else:
+                    dmg_mult = 1.0
+                    frames = 1
+                actual_dmg = int(self.dmg * dmg_mult)
+                killed = target.take_damage(actual_dmg)
+                self.beam_targets[enemy_id] = (dmg_mult, frames)
+                self.cooldown = self.fire_rate
+                self.last_shot_target = target.get_position()
+                self.last_shot_frame = current_frame
+                return (target, killed)
+            else:
+                # Clear beam targets if no target
+                self.beam_targets.clear()
+            return None
+
+        else:  # Ball or Overwatch (default)
+            # Standard projectile targeting
+            target = None
+            best_dist = float('inf')
+            enemy_count = 0
+            max_enemies = 10
+            effective_range = 99 if self.fire_type == "Overwatch" else self.range
+            for dy in range(-int(effective_range), int(effective_range) + 1):
+                for dx in range(-int(effective_range), int(effective_range) + 1):
+                    if abs(dx) + abs(dy) > effective_range:
+                        continue
+                    nx, ny = self.x + dx, self.y + dy
+                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
+                        for e in game.enemy_grid[ny][nx]:
+                            if enemy_count >= max_enemies:
+                                break
+                            if e.alive and not e.leaked:
+                                enemy_count += 1
+                                dist = abs(dx) + abs(dy)
+                                if dist < best_dist:
+                                    best_dist = dist
+                                    target = e
+                if enemy_count >= max_enemies:
+                    break
+
+            if target:
+                killed = target.take_damage(self.dmg)
+                self.cooldown = self.fire_rate
+                self.last_shot_target = target.get_position()
+                self.last_shot_frame = current_frame
+                return (target, killed)
+            return None
 
 # ==============================
 # GAME
@@ -503,7 +625,7 @@ class Game:
         """Create Egrem tower and put on bench; remove the two source towers."""
         idx1, idx2 = sorted([self.merge_tower_1, self.merge_tower_2])
         t1, t2 = self.bench[idx1], self.bench[idx2]
-        egrem = Tower(0, 0, tower_type="Egrem")
+        egrem = Tower(0, 0, tower_type="Nanite Swarm")
         egrem.gold_invested = (t1.gold_invested if t1 else 0) + (t2.gold_invested if t2 else 0)
         
         # Configure egrem spawning based on source towers
@@ -575,7 +697,7 @@ class Game:
     def place_tower(self, gx, gy, bench_idx=None):
         if not (0 <= gx < self.width and 0 <= gy < self.height):
             return False
-        if (gx, gy) in self.path or self.grid[gy][gx] != '.':
+        if self.grid[gy][gx] != '.':
             return False
         if bench_idx is None or bench_idx >= 10 or self.bench[bench_idx] is None:
             return False
@@ -664,7 +786,7 @@ class Game:
         self.spawn_queue = [Enemy(self.path, random.choice(types), self.round_num) for _ in range(wave_size)]
         # Egrem towers on grid spawn 1-2 mini-boss style enemies per wave (fewer, stronger)
         for t in self.towers:
-            if t.base_type == "Egrem":
+            if t.base_type == "Nanite Swarm":
                 for _ in range(random.randint(1, 2)):
                     self.spawn_queue.append(Enemy(self.path, "Assimilator", self.round_num + 2))
         self.spawn_timer = 0
@@ -680,6 +802,19 @@ class Game:
         # Update towers (including egrem spawning)
         for t in self.towers:
             t.update(self.enemies, frame, self)
+
+        # Apply auras
+        for t in self.towers:
+            if "resist_2" in t.upgrades:
+                for dy in range(-t.range, t.range + 1):
+                    for dx in range(-t.range, t.range + 1):
+                        if abs(dx) + abs(dy) > t.range:
+                            continue
+                        nx, ny = t.x + dx, t.y + dy
+                        if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
+                            for e in game.enemy_grid[ny][nx]:
+                                if e.alive and not e.leaked:
+                                    e.apply_debuff('slow', 30, 60)
         
         # Update enemy grid
         for row in self.enemy_grid:
@@ -769,12 +904,12 @@ font_s = pygame.font.SysFont("consolas", 12)
 font_merge = pygame.font.SysFont("consolas", 20)  # Larger font for merge/egrem labels
 
 tower_colors = {
-    "Transistor": (70,130,255),
-    "Capacitor":  (100,255,100),
-    "Resistor":   (220,120,60),
-    "Diode":      (200,100,255),
-    "Inductor":   (255,200,50),
-    "Egrem":      (40, 40, 45),  # dark grey background; card drawn with green/red in bench
+    "Neural Processor": (70,130,255),
+    "Plasma Capacitor":  (100,255,100),
+    "Thermal Regulator":   (220,120,60),
+    "Signal Router":      (200,100,255),
+    "Quantum Field Gen":   (255,200,50),
+    "Nanite Swarm":      (40, 40, 45),  # dark grey background; card drawn with green/red in bench
 }
 
 frame = 0
@@ -804,13 +939,23 @@ while running:
                                 game.upgrade_dialog_choices = game.get_upgrade_choices(t)
                             break
                     else:
-                        sell_r = pygame.Rect(GRID_W + 10, 306, 75, 24)
-                        close_r = pygame.Rect(GRID_W + 95, 306, 75, 24)
-                        if sell_r.collidepoint(mx, my):
-                            game.sell_tower_from_grid(t.x, t.y)
-                            game.upgrade_dialog_tower = None
-                        elif close_r.collidepoint(mx, my):
-                            game.upgrade_dialog_tower = None
+                        # Direction selector for Track towers
+                        if t.fire_type == "Track":
+                            for d in range(4):
+                                dx = GRID_W + 14 + d * 35
+                                dy = 318
+                                r = pygame.Rect(dx, dy, 30, 20)
+                                if r.collidepoint(mx, my):
+                                    t.track_direction = d
+                                    break
+                        else:
+                            sell_r = pygame.Rect(GRID_W + 10, 306, 75, 24)
+                            close_r = pygame.Rect(GRID_W + 95, 306, 75, 24)
+                            if sell_r.collidepoint(mx, my):
+                                game.sell_tower_from_grid(t.x, t.y)
+                                game.upgrade_dialog_tower = None
+                            elif close_r.collidepoint(mx, my):
+                                game.upgrade_dialog_tower = None
                 # Right panel: Play/Pause, Next Wave, Auto (only when not in dialog area)
                 elif mx >= GRID_W:
                     play_rect = pygame.Rect(GRID_W + 14, 96, 100, 26)
@@ -946,14 +1091,15 @@ while running:
         pygame.draw.rect(screen, TEXT, (x,y,60,90), 2)
         if game.bench[i]:
             t = game.bench[i]
-            if t.base_type == "Egrem":
+            if t.base_type == "Nanite Swarm":
                 pygame.draw.rect(screen, (28, 28, 35), (x, y, 60, 90))
                 pygame.draw.rect(screen, (80, 255, 80), (x, y, 60, 90), 2)
                 screen.blit(font_s.render("Egrem", True, (80, 255, 100)), (x+5, y+5))
                 screen.blit(font_s.render("spawn", True, (255, 80, 80)), (x+5, y+28))
                 screen.blit(font_s.render(f"T{t.get_merge_tier()}", True, TEXT), (x+5, y+50))
             else:
-                screen.blit(font_s.render(t.base_type[:6], True, TEXT), (x+5,y+5))
+                display_name = t.BASE_TYPES[t.base_type]["display"]
+                screen.blit(font_s.render(display_name[:6], True, TEXT), (x+5,y+5))
                 screen.blit(font_s.render(f"D:{t.dmg}", True, TEXT), (x+5,y+30))
                 screen.blit(font_s.render(f"T{t.get_merge_tier()}", True, TEXT), (x+5,y+50))
         # Flash overlay for egrem (wrong-tier) attempt on second selected card
@@ -1062,12 +1208,24 @@ while running:
             pygame.draw.rect(screen, TEXT, r, 1)
             screen.blit(font_s.render(f"{name} ${cost}", True, TEXT), (GRID_W + 14, opts_y[i] + 4))
             screen.blit(font_s.render(desc[:28], True, (180, 180, 200)), (GRID_W + 14, opts_y[i] + 16))
-        pygame.draw.rect(screen, (120, 80, 80), (GRID_W + 10, 306, 75, 24))
-        pygame.draw.rect(screen, TEXT, (GRID_W + 10, 306, 75, 24), 1)
-        screen.blit(font_s.render("Sell 60%", True, TEXT), (GRID_W + 18, 310))
-        pygame.draw.rect(screen, PANEL_BTN, (GRID_W + 95, 306, 75, 24))
-        pygame.draw.rect(screen, TEXT, (GRID_W + 95, 306, 75, 24), 1)
-        screen.blit(font_s.render("Close", True, TEXT), (GRID_W + 118, 310))
+        # Direction selector for Track and DirectionalBeam towers
+        if t.fire_type in ("Track", "DirectionalBeam"):
+            screen.blit(font_s.render("Direction:", True, TEXT), (GRID_W + 14, 302))
+            directions = ["N", "E", "S", "W"]
+            for d in range(4):
+                dx = GRID_W + 14 + d * 35
+                dy = 318
+                col = PANEL_BTN_SEL if t.track_direction == d else PANEL_BTN
+                pygame.draw.rect(screen, col, (dx, dy, 30, 20))
+                pygame.draw.rect(screen, TEXT, (dx, dy, 30, 20), 1)
+                screen.blit(font_s.render(directions[d], True, TEXT), (dx + 10, dy + 2))
+        else:
+            pygame.draw.rect(screen, (120, 80, 80), (GRID_W + 10, 306, 75, 24))
+            pygame.draw.rect(screen, TEXT, (GRID_W + 10, 306, 75, 24), 1)
+            screen.blit(font_s.render("Sell 60%", True, TEXT), (GRID_W + 18, 310))
+            pygame.draw.rect(screen, PANEL_BTN, (GRID_W + 95, 306, 75, 24))
+            pygame.draw.rect(screen, TEXT, (GRID_W + 95, 306, 75, 24), 1)
+            screen.blit(font_s.render("Close", True, TEXT), (GRID_W + 118, 310))
 
     # Grid
     for x in range(game.width+1):
@@ -1089,8 +1247,8 @@ while running:
         gy = (my - grid_y) // TILE
         if 0 <= gx < game.width and 0 <= gy < game.height:
             t = game.bench[game.selected_tower]
-            if t:
-                r = t.range * TILE
+            if t and t.fire_type != "Overwatch":
+                r = min(t.range * TILE, 200)  # Limit size to prevent huge surfaces
                 cx = gx * TILE + 20
                 cy = grid_y + gy * TILE + 20
                 s = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
@@ -1117,6 +1275,15 @@ while running:
         r = pygame.Rect(t.x*TILE +6, grid_y + t.y*TILE +6, TILE-12, TILE-12)
         pygame.draw.rect(screen, col, r)
         pygame.draw.rect(screen, (220,220,255), r, 2)
+        # Permanent range display for Radius towers
+        if t.fire_type == "Radius":
+            cx = t.x * TILE + 20
+            cy = grid_y + t.y * TILE + 20
+            rad = t.range * TILE
+            s = pygame.Surface((rad*2+4, rad*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(s, (220,120,60,80), (rad+2, rad+2), rad)
+            pygame.draw.circle(s, (255,150,80,150), (rad+2, rad+2), rad, 2)
+            screen.blit(s, (cx-rad-2, cy-rad-2))
 
     # Enemies
     for e in game.enemies:
