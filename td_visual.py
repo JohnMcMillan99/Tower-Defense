@@ -376,12 +376,14 @@ class Tower:
             return None
 
         else:  # Ball or Overwatch (default)
-            # Standard projectile targeting
+            # Standard projectile targeting - optimized using enemy grid
             target = None
             best_dist = float('inf')
             enemy_count = 0
             max_enemies = 10
             effective_range = 99 if self.fire_type == "Overwatch" else self.range
+
+            # Iterate over diamond-shaped area within range using grid
             for dy in range(-int(effective_range), int(effective_range) + 1):
                 for dx in range(-int(effective_range), int(effective_range) + 1):
                     if abs(dx) + abs(dy) > effective_range:
@@ -444,6 +446,7 @@ class Game:
         self.wave_bonus_show_until = 0
         self.upgrade_dialog_tower = None  # Tower on grid when upgrade dialog is open
         self.upgrade_dialog_choices = []  # Current 3 upgrade options when dialog is open
+        self.selected_enemy = None  # Enemy selected for inspection
         # Egrem (wrong-tier merge) state
         self.egrem_preview = False
         self.egrem_consecutive = 0
@@ -605,7 +608,7 @@ class Game:
         base_cost = (tier1 * 10) + (tier2 * 10)
         # Ensure minimum cost of 5 even for T0+T0
         base_cost = max(5, base_cost)
-        cost = int(base_cost * 1.25)
+        cost = int(base_cost * 1.3)
         self.current_merge_cost = cost  # Display the egrem cost
         if self.gold < cost:
             self.merge_tower_2 = None
@@ -925,37 +928,45 @@ while running:
             mx, my = event.pos
             if event.button == 1:
                 # Upgrade dialog (when open) — check first so dialog clicks in right panel are handled
-                dialog_rect = pygame.Rect(GRID_W + 8, 162, 164, 268)
-                if game.upgrade_dialog_tower is not None and dialog_rect.collidepoint(mx, my):
+                if game.upgrade_dialog_tower is not None:
                     t = game.upgrade_dialog_tower
-                    opts_y = [200, 234, 268]
-                    choices = getattr(game, "upgrade_dialog_choices", [])
-                    for i, uid in enumerate(choices):
-                        if i >= 3:
-                            break
-                        r = pygame.Rect(GRID_W + 10, opts_y[i], 160, 32)
-                        if r.collidepoint(mx, my):
-                            if game.apply_upgrade(t, uid):
-                                game.upgrade_dialog_choices = game.get_upgrade_choices(t)
-                            break
-                    else:
-                        # Direction selector for Track towers
-                        if t.fire_type == "Track":
-                            for d in range(4):
-                                dx = GRID_W + 14 + d * 35
-                                dy = 318
-                                r = pygame.Rect(dx, dy, 30, 20)
-                                if r.collidepoint(mx, my):
-                                    t.track_direction = d
-                                    break
+                    base_height = 320
+                    upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
+                    dialog_height = base_height + upgrade_height
+                    dialog_rect = pygame.Rect(GRID_W + 8, 162, 164, dialog_height)
+                    if dialog_rect.collidepoint(mx, my):
+                        t = game.upgrade_dialog_tower
+                        opts_y = [200, 234, 268]
+                        choices = getattr(game, "upgrade_dialog_choices", [])
+                        for i, uid in enumerate(choices):
+                            if i >= 3:
+                                break
+                            r = pygame.Rect(GRID_W + 10, opts_y[i], 160, 32)
+                            if r.collidepoint(mx, my):
+                                if game.apply_upgrade(t, uid):
+                                    game.upgrade_dialog_choices = game.get_upgrade_choices(t)
+                                break
                         else:
-                            sell_r = pygame.Rect(GRID_W + 10, 306, 75, 24)
-                            close_r = pygame.Rect(GRID_W + 95, 306, 75, 24)
-                            if sell_r.collidepoint(mx, my):
-                                game.sell_tower_from_grid(t.x, t.y)
-                                game.upgrade_dialog_tower = None
-                            elif close_r.collidepoint(mx, my):
-                                game.upgrade_dialog_tower = None
+                            # Direction selector for Track towers
+                            if t.fire_type == "Track":
+                                for d in range(4):
+                                    dx = GRID_W + 14 + d * 35
+                                    dy = 318
+                                    r = pygame.Rect(dx, dy, 30, 20)
+                                    if r.collidepoint(mx, my):
+                                        t.track_direction = d
+                                        break
+                            else:
+                                sell_r = pygame.Rect(GRID_W + 10, 306, 75, 24)
+                                close_r = pygame.Rect(GRID_W + 95, 306, 75, 24)
+                                if sell_r.collidepoint(mx, my):
+                                    game.sell_tower_from_grid(t.x, t.y)
+                                    game.upgrade_dialog_tower = None
+                                elif close_r.collidepoint(mx, my):
+                                    game.upgrade_dialog_tower = None
+                    else:
+                        # Clicked outside dialog - deselect tower
+                        game.upgrade_dialog_tower = None
                 # Right panel: Play/Pause, Next Wave, Auto (only when not in dialog area)
                 elif mx >= GRID_W:
                     play_rect = pygame.Rect(GRID_W + 14, 96, 100, 26)
@@ -1020,7 +1031,7 @@ while running:
                         # Handle cancel if clicked outside merge/egrem area
                         if (game.merge_preview or game.egrem_preview) and not clicked_on_bench_card:
                             game.cancel_merge()
-                # Grid: place from bench, or open upgrade dialog on placed tower
+                # Grid: place from bench, select enemy, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
                     gx = mx // TILE
                     gy = (my - grid_y) // TILE
@@ -1029,12 +1040,27 @@ while running:
                     else:
                         if game.merge_preview or game.egrem_preview or game.merge_tower_1 is not None:
                             game.cancel_merge()
-                        # Left-click on placed tower: open upgrade dialog
-                        for t in game.towers:
-                            if t.x == gx and t.y == gy:
-                                game.upgrade_dialog_tower = t
-                                game.upgrade_dialog_choices = game.get_upgrade_choices(t)
-                                break
+                        # Check for enemy selection first
+                        enemy_selected = False
+                        if 0 <= gx < game.width and 0 <= gy < game.height:
+                            for e in game.enemy_grid[gy][gx]:
+                                if e.alive:
+                                    game.selected_enemy = e
+                                    game.upgrade_dialog_tower = None  # Clear tower selection
+                                    enemy_selected = True
+                                    break
+                        if not enemy_selected:
+                            # Left-click on placed tower: open upgrade dialog
+                            for t in game.towers:
+                                if t.x == gx and t.y == gy:
+                                    game.upgrade_dialog_tower = t
+                                    game.upgrade_dialog_choices = game.get_upgrade_choices(t)
+                                    game.selected_enemy = None  # Clear enemy selection
+                                    break
+                            else:
+                                # Clicked on empty grid: clear selections
+                                game.selected_enemy = None
+                                game.upgrade_dialog_tower = None
             elif event.button == 3:
                 # Right-click: cancel merge/egrem if preview is open
                 if game.merge_preview or game.egrem_preview or game.merge_tower_1 is not None:
@@ -1190,11 +1216,19 @@ while running:
     # Upgrade dialog (when a placed tower is selected)
     if game.upgrade_dialog_tower is not None:
         t = game.upgrade_dialog_tower
-        dialog_rect = pygame.Rect(GRID_W + 8, 162, 164, 268)
+
+        # Calculate dynamic dialog height based on upgrades
+        base_height = 320
+        upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
+        dialog_height = base_height + upgrade_height
+
+        dialog_rect = pygame.Rect(GRID_W + 8, 162, 164, dialog_height)
         pygame.draw.rect(screen, (35, 35, 50), dialog_rect)
         pygame.draw.rect(screen, TEXT, dialog_rect, 2)
         screen.blit(font.render("Upgrade", True, TEXT), (GRID_W + 14, 168))
         screen.blit(font_s.render(f"{t.base_type}  D:{t.dmg} R:{t.range}", True, TEXT), (GRID_W + 14, 184))
+
+        # Upgrade options
         opts_y = [200, 234, 268]
         for i, uid in enumerate(getattr(game, "upgrade_dialog_choices", [])):
             if i >= 3:
@@ -1208,24 +1242,63 @@ while running:
             pygame.draw.rect(screen, TEXT, r, 1)
             screen.blit(font_s.render(f"{name} ${cost}", True, TEXT), (GRID_W + 14, opts_y[i] + 4))
             screen.blit(font_s.render(desc[:28], True, (180, 180, 200)), (GRID_W + 14, opts_y[i] + 16))
-        # Direction selector for Track and DirectionalBeam towers
-        if t.fire_type in ("Track", "DirectionalBeam"):
-            screen.blit(font_s.render("Direction:", True, TEXT), (GRID_W + 14, 302))
-            directions = ["N", "E", "S", "W"]
-            for d in range(4):
-                dx = GRID_W + 14 + d * 35
-                dy = 318
-                col = PANEL_BTN_SEL if t.track_direction == d else PANEL_BTN
-                pygame.draw.rect(screen, col, (dx, dy, 30, 20))
-                pygame.draw.rect(screen, TEXT, (dx, dy, 30, 20), 1)
-                screen.blit(font_s.render(directions[d], True, TEXT), (dx + 10, dy + 2))
-        else:
-            pygame.draw.rect(screen, (120, 80, 80), (GRID_W + 10, 306, 75, 24))
-            pygame.draw.rect(screen, TEXT, (GRID_W + 10, 306, 75, 24), 1)
-            screen.blit(font_s.render("Sell 60%", True, TEXT), (GRID_W + 18, 310))
-            pygame.draw.rect(screen, PANEL_BTN, (GRID_W + 95, 306, 75, 24))
-            pygame.draw.rect(screen, TEXT, (GRID_W + 95, 306, 75, 24), 1)
-            screen.blit(font_s.render("Close", True, TEXT), (GRID_W + 118, 310))
+
+        # Sell and Close buttons - adjust position based on dialog height
+        button_y = 306 + upgrade_height
+        pygame.draw.rect(screen, (120, 80, 80), (GRID_W + 10, button_y, 75, 24))
+        pygame.draw.rect(screen, TEXT, (GRID_W + 10, button_y, 75, 24), 1)
+        screen.blit(font_s.render("Sell 60%", True, TEXT), (GRID_W + 18, button_y + 4))
+        pygame.draw.rect(screen, PANEL_BTN, (GRID_W + 95, button_y, 75, 24))
+        pygame.draw.rect(screen, TEXT, (GRID_W + 95, button_y, 75, 24), 1)
+        screen.blit(font_s.render("Close", True, TEXT), (GRID_W + 118, button_y + 4))
+
+        # Tower stats integrated into the dialog (below buttons)
+        tower_stats_y = button_y + 34  # Start below the buttons
+        screen.blit(font_s.render("Stats:", True, TEXT), (GRID_W + 14, tower_stats_y))
+        tower_stats_y += 16
+        screen.blit(font_s.render(f"Damage: {t.dmg}", True, TEXT), (GRID_W + 14, tower_stats_y))
+        tower_stats_y += 16
+        screen.blit(font_s.render(f"Range: {t.range}", True, TEXT), (GRID_W + 14, tower_stats_y))
+        tower_stats_y += 16
+        screen.blit(font_s.render(f"Fire Rate: {t.fire_rate}", True, TEXT), (GRID_W + 14, tower_stats_y))
+        tower_stats_y += 16
+        screen.blit(font_s.render(f"Heat: {t.heat:.1f}/{t.max_heat}", True, TEXT), (GRID_W + 14, tower_stats_y))
+        tower_stats_y += 20
+        if t.upgrades:
+            screen.blit(font_s.render("Upgrades:", True, TEXT), (GRID_W + 14, tower_stats_y))
+            for uid in t.upgrades:
+                tower_stats_y += 16
+                name = UPGRADE_DEFS.get(uid, {}).get("name", uid)
+                screen.blit(font_s.render(f"- {name}", True, (180, 180, 200)), (GRID_W + 14, tower_stats_y))
+
+        # Draw range visualization for selected tower
+        if t.fire_type != "Overwatch":  # Overwatch has infinite range
+            cx = t.x * TILE + 20
+            cy = grid_y + t.y * TILE + 20
+            rad = t.range * TILE
+            s = pygame.Surface((rad*2+4, rad*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(s, (100,160,255,80), (rad+2, rad+2), rad)
+            pygame.draw.circle(s, (160,220,255,150), (rad+2, rad+2), rad, 2)
+            screen.blit(s, (cx-rad-2, cy-rad-2))
+
+    # Enemy stats card (below upgrade dialog area)
+    if game.selected_enemy:
+        e = game.selected_enemy
+        enemy_stats_rect = pygame.Rect(GRID_W + 8, 162 + 320 + 10, 164, 120)  # Positioned below the expanded upgrade dialog
+        pygame.draw.rect(screen, (35, 35, 50), enemy_stats_rect)
+        pygame.draw.rect(screen, TEXT, enemy_stats_rect, 2)
+        y_offset = enemy_stats_rect.y + 6
+        screen.blit(font.render(f"{e.display_name}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
+        y_offset += 20
+        screen.blit(font_s.render(f"HP: {e.health}/{e.max_health}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
+        y_offset += 16
+        screen.blit(font_s.render(f"Speed: {e.move_speed}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
+        y_offset += 16
+        screen.blit(font_s.render(f"Difficulty: {e.difficulty}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
+        y_offset += 16
+        screen.blit(font_s.render(f"Wave: {e.wave_num}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
+        y_offset += 16
+        screen.blit(font_s.render(f"Position: {e.position_index}", True, TEXT), (enemy_stats_rect.x + 6, y_offset))
 
     # Grid
     for x in range(game.width+1):
@@ -1242,15 +1315,22 @@ while running:
 
     # Range preview
     mx,my = pygame.mouse.get_pos()
-    if game.selected_tower is not None and game.merge_preview is None and my >= grid_y:
+    if my >= grid_y:
         gx = mx // TILE
         gy = (my - grid_y) // TILE
         if 0 <= gx < game.width and 0 <= gy < game.height:
-            t = game.bench[game.selected_tower]
+            t = None
+            cx, cy = gx * TILE + 20, grid_y + gy * TILE + 20
+            if game.selected_tower is not None and game.merge_preview is None:
+                # Tower selected from bench for placement - show range at mouse position
+                t = game.bench[game.selected_tower]
+            elif game.upgrade_dialog_tower is not None:
+                # Placed tower selected - show range around the placed tower, not at mouse
+                t = game.upgrade_dialog_tower
+                cx = t.x * TILE + 20
+                cy = grid_y + t.y * TILE + 20
             if t and t.fire_type != "Overwatch":
                 r = min(t.range * TILE, 200)  # Limit size to prevent huge surfaces
-                cx = gx * TILE + 20
-                cy = grid_y + gy * TILE + 20
                 s = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
                 pygame.draw.circle(s, (100,160,255,60), (r+2,r+2), r)
                 pygame.draw.circle(s, (160,220,255,180), (r+2,r+2), r, 2)
