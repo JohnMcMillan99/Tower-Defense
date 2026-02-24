@@ -782,6 +782,77 @@ class Game:
             return enemy
         return None
 
+    def should_expand_map(self, tile_cells):
+        """Check if tile placement should trigger map expansion."""
+        for tx, ty in tile_cells:
+            # Check if any tile cell is within 2 units of any edge
+            if tx <= 1 or tx >= self.width - 3 or ty <= 1 or ty >= self.height - 3:
+                return True
+        return False
+
+    def expand_grid(self, tile_cells):
+        """Expand grid by 2 rows/columns in directions needed."""
+        expand_north = any(ty <= 1 for tx, ty in tile_cells)
+        expand_south = any(ty >= self.height - 3 for tx, ty in tile_cells)
+        expand_west = any(tx <= 1 for tx, ty in tile_cells)
+        expand_east = any(tx >= self.width - 3 for tx, ty in tile_cells)
+
+        # Calculate new dimensions
+        new_width = self.width + (2 if expand_east else 0) + (2 if expand_west else 0)
+        new_height = self.height + (2 if expand_south else 0) + (2 if expand_north else 0)
+
+        # Create new grid and enemy_grid
+        new_grid = [["." for _ in range(new_width)] for _ in range(new_height)]
+        new_enemy_grid = [[[] for _ in range(new_width)] for _ in range(new_height)]
+
+        # Copy existing data with offset
+        offset_x = 2 if expand_west else 0
+        offset_y = 2 if expand_north else 0
+
+        for y in range(self.height):
+            for x in range(self.width):
+                new_grid[y + offset_y][x + offset_x] = self.grid[y][x]
+                new_enemy_grid[y + offset_y][x + offset_x] = self.enemy_grid[y][x]
+
+        # Update coordinates if expanding west/north
+        if expand_west or expand_north:
+            # Shift all path coordinates
+            self.path = [(x + offset_x, y + offset_y) for x, y in self.path]
+
+            # Update path graph
+            self.path_graph = PathGraph()
+            for pos in self.path:
+                self.path_graph.add_node(pos)
+            for i in range(len(self.path) - 1):
+                self.path_graph.add_edge(self.path[i], self.path[i+1])
+            if self.path:
+                self.path_graph.set_end(self.path[-1])
+
+            # Update towers
+            for tower in self.towers:
+                tower.x += offset_x
+                tower.y += offset_y
+
+        # Update grid references
+        self.grid = new_grid
+        self.enemy_grid = new_enemy_grid
+        self.width = new_width
+        self.height = new_height
+
+
+# Camera transform functions
+def world_to_screen(wx, wy):
+    """Convert world coordinates to screen coordinates."""
+    sx = (wx * TILE * zoom_level) + camera_x
+    sy = grid_y + (wy * TILE * zoom_level) + camera_y
+    return sx, sy
+
+def screen_to_world(sx, sy):
+    """Convert screen coordinates to world coordinates."""
+    wx = ((sx - camera_x) / (TILE * zoom_level))
+    wy = ((sy - grid_y - camera_y) / (TILE * zoom_level))
+    return wx, wy
+
 
 # ==============================
 # PYGAME MAIN
@@ -798,6 +869,14 @@ HEIGHT = SHOP_H + BENCH_H + game.height * TILE
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Borg TD Prototype")
 clock = pygame.time.Clock()
+
+# Camera system
+camera_x = 0
+camera_y = 0
+zoom_level = 1.0
+dragging = False
+last_mouse_x = 0
+last_mouse_y = 0
 
 BLACK = (10,10,15)
 GRID = (35,35,45)
@@ -856,7 +935,29 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
-            pass  # Rotation now handled by right-click
+            # Camera controls with arrow keys
+            if event.key == pygame.K_LEFT:
+                camera_x += 50
+            elif event.key == pygame.K_RIGHT:
+                camera_x -= 50
+            elif event.key == pygame.K_UP:
+                camera_y += 50
+            elif event.key == pygame.K_DOWN:
+                camera_y -= 50
+            elif event.key == pygame.K_HOME:  # Reset camera
+                camera_x = 0
+                camera_y = 0
+                zoom_level = 1.0
+        elif event.type == pygame.MOUSEWHEEL:
+            # Zoom in/out with mouse wheel
+            old_zoom = zoom_level
+            zoom_level = max(0.5, min(2.0, zoom_level + event.y * 0.1))
+            # Zoom towards mouse cursor
+            mx, my = pygame.mouse.get_pos()
+            if my >= grid_y and mx < GRID_W:
+                wx, wy = screen_to_world(mx, my)
+                camera_x = mx - (wx * TILE * zoom_level)
+                camera_y = my - grid_y - (wy * TILE * zoom_level)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
             tile_placement_log("MOUSEBUTTONDOWN", {
@@ -1022,8 +1123,8 @@ while running:
                                 break
                 # Grid: place from bench, place map tile, select enemy, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
-                        gx = mx // TILE
-                        gy = (my - grid_y) // TILE
+                        gx, gy = screen_to_world(mx, my)
+                        gx, gy = int(gx), int(gy)
                         tile_placement_log("GRID_CLICK", {"gx": gx, "gy": gy, "selected_map_tile": game.selected_map_tile})
                         if game.selected_map_tile is not None:
                             # Place map tile to expand grid
@@ -1037,6 +1138,17 @@ while running:
                             if tile_data and can_place:
                                 tile_placement_log("CALLING_PLACE_MAP_TILE", {"gx": gx, "gy": gy})
                                 game.place_map_tile(tile_data, gx, gy, game.selected_tile_rotation)
+
+                                # Check if expansion needed and expand
+                                tile_cells = game._get_tile_path_cells(tile_data, gx, gy, game.selected_tile_rotation)
+                                if game.should_expand_map(tile_cells):
+                                    game.expand_grid(tile_cells)
+                                    # Update global window dimensions
+                                    GRID_W = game.width * TILE
+                                    WIDTH = GRID_W + PANEL_RIGHT_W
+                                    HEIGHT = SHOP_H + BENCH_H + game.height * TILE
+                                    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
                                 # Remove tile from bench after placement
                                 game.map_tile_bench[game.selected_map_tile] = None
                                 game.selected_map_tile = None
@@ -1082,9 +1194,22 @@ while running:
                             break
                 # Sell grid (60% of gold invested)
                 elif my >= grid_y and mx < GRID_W:
-                    gx = mx // TILE
-                    gy = (my - grid_y) // TILE
+                    gx, gy = screen_to_world(mx, my)
+                    gx, gy = int(gx), int(gy)
                     game.sell_tower_from_grid(gx, gy)
+            elif event.button == 2:  # Middle mouse button - start dragging
+                dragging = True
+                last_mouse_x, last_mouse_y = event.pos
+        elif event.type == pygame.MOUSEMOTION:
+            if dragging:
+                dx = event.pos[0] - last_mouse_x
+                dy = event.pos[1] - last_mouse_y
+                camera_x += dx
+                camera_y += dy
+                last_mouse_x, last_mouse_y = event.pos
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 2:  # Middle mouse button - stop dragging
+                dragging = False
 
     game.update_wave(frame)
 
@@ -1376,9 +1501,13 @@ while running:
 
     # Grid
     for x in range(game.width+1):
-        pygame.draw.line(screen, GRID, (x*TILE, grid_y), (x*TILE, grid_y + game.height*TILE), 1)
+        sx1, sy1 = world_to_screen(x, 0)
+        sx2, sy2 = world_to_screen(x, game.height)
+        pygame.draw.line(screen, GRID, (sx1, sy1), (sx2, sy2), max(1, int(zoom_level)))
     for y in range(game.height+1):
-        pygame.draw.line(screen, GRID, (0, grid_y + y*TILE), (GRID_W, grid_y + y*TILE), 1)
+        sx1, sy1 = world_to_screen(0, y)
+        sx2, sy2 = world_to_screen(game.width, y)
+        pygame.draw.line(screen, GRID, (sx1, sy1), (sx2, sy2), max(1, int(zoom_level)))
 
     # Render grid cells based on content
     for y in range(game.height):
@@ -1386,7 +1515,8 @@ while running:
             cell_content = game.grid[y][x]
             if cell_content == 'P':  # Path cell - render directional path
                 # First render a subtle background
-                cell_rect = pygame.Rect(x*TILE + 1, grid_y + y*TILE + 1, TILE - 2, TILE - 2)
+                sx, sy = world_to_screen(x, y)
+                cell_rect = pygame.Rect(sx + 1, sy + 1, TILE * zoom_level - 2, TILE * zoom_level - 2)
                 pygame.draw.rect(screen, (120, 80, 40), cell_rect)  # Light brown background
 
                 # Find this cell's position in the path
@@ -1403,9 +1533,9 @@ while running:
                     next_pos = game.path[path_index + 1] if path_index < len(game.path) - 1 else None
 
                     # Calculate directions
-                    center_x = x * TILE + TILE // 2
-                    center_y = grid_y + y * TILE + TILE // 2
-                    path_width = 8  # Width of path line
+                    center_x = sx + (TILE * zoom_level) // 2
+                    center_y = sy + (TILE * zoom_level) // 2
+                    path_width = max(2, int(8 * zoom_level))  # Scale path width with zoom
 
                     # Draw path segments
                     if prev_pos:
@@ -1413,13 +1543,13 @@ while running:
                         dx = prev_pos[0] - cell_pos[0]
                         dy = prev_pos[1] - cell_pos[1]
                         if dx > 0:  # Previous is right
-                            start_x, start_y = center_x + TILE // 2, center_y
+                            start_x, start_y = center_x + (TILE * zoom_level) // 2, center_y
                         elif dx < 0:  # Previous is left
-                            start_x, start_y = center_x - TILE // 2, center_y
+                            start_x, start_y = center_x - (TILE * zoom_level) // 2, center_y
                         elif dy > 0:  # Previous is down
-                            start_x, start_y = center_x, center_y + TILE // 2
+                            start_x, start_y = center_x, center_y + (TILE * zoom_level) // 2
                         elif dy < 0:  # Previous is up
-                            start_x, start_y = center_x, center_y - TILE // 2
+                            start_x, start_y = center_x, center_y - (TILE * zoom_level) // 2
                         else:
                             start_x, start_y = center_x, center_y
                         pygame.draw.line(screen, (160, 82, 45), (center_x, center_y), (start_x, start_y), path_width)
@@ -1429,38 +1559,42 @@ while running:
                         dx = next_pos[0] - cell_pos[0]
                         dy = next_pos[1] - cell_pos[1]
                         if dx > 0:  # Next is right
-                            end_x, end_y = center_x + TILE // 2, center_y
+                            end_x, end_y = center_x + (TILE * zoom_level) // 2, center_y
                         elif dx < 0:  # Next is left
-                            end_x, end_y = center_x - TILE // 2, center_y
+                            end_x, end_y = center_x - (TILE * zoom_level) // 2, center_y
                         elif dy > 0:  # Next is down
-                            end_x, end_y = center_x, center_y + TILE // 2
+                            end_x, end_y = center_x, center_y + (TILE * zoom_level) // 2
                         elif dy < 0:  # Next is up
-                            end_x, end_y = center_x, center_y - TILE // 2
+                            end_x, end_y = center_x, center_y - (TILE * zoom_level) // 2
                         else:
                             end_x, end_y = center_x, center_y
                         pygame.draw.line(screen, (160, 82, 45), (center_x, center_y), (end_x, end_y), path_width)
 
             elif cell_content == 'X':  # Expanded non-path
-                         cell_rect = pygame.Rect(x*TILE + 1, grid_y + y*TILE + 1, TILE - 2, TILE - 2)
+                         cell_rect = pygame.Rect(sx + 1, sy + 1, TILE * zoom_level - 2, TILE * zoom_level - 2)
                          pygame.draw.rect(screen, (128, 128, 128), cell_rect)
 
     # Draw subtle connecting lines between path cells (now that we have directional rendering)
     for i in range(len(game.path)-1):
         x1,y1 = game.path[i]
         x2,y2 = game.path[i+1]
+        sx1, sy1 = world_to_screen(x1, y1)
+        sx2, sy2 = world_to_screen(x2, y2)
         pygame.draw.line(screen, (120, 60, 30),  # Darker brown for subtle connection
-                         (x1*TILE +20, grid_y + y1*TILE +20),
-                         (x2*TILE +20, grid_y + y2*TILE +20), 6)
+                         (sx1 + 20 * zoom_level, sy1 + 20 * zoom_level),
+                         (sx2 + 20 * zoom_level, sy2 + 20 * zoom_level), max(2, int(6 * zoom_level)))
 
 
     # Range preview
     mx,my = pygame.mouse.get_pos()
-    if my >= grid_y:
-        gx = mx // TILE
-        gy = (my - grid_y) // TILE
+    if my >= grid_y and mx < GRID_W:
+        gx, gy = screen_to_world(mx, my)
+        gx, gy = int(gx), int(gy)
         if 0 <= gx < game.width and 0 <= gy < game.height:
             t = None
-            cx, cy = gx * TILE + 20, grid_y + gy * TILE + 20
+            cx, cy = world_to_screen(gx, gy)
+            cx += 20 * zoom_level
+            cy += 20 * zoom_level
             if game.selected_tower is not None and game.merge_preview is None:
                 # Tower selected from bench for placement - show range at mouse position
                 t = game.bench[game.selected_tower]
@@ -1470,7 +1604,7 @@ while running:
                 cx = t.x * TILE + 20
                 cy = grid_y + t.y * TILE + 20
             if t and t.fire_type != "Overwatch":
-                r = min(t.range * TILE, 200)  # Limit size to prevent huge surfaces
+                r = min(t.range * TILE * zoom_level, 200)  # Limit size to prevent huge surfaces
                 s = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
                 pygame.draw.circle(s, (100,160,255,60), (r+2,r+2), r)
                 pygame.draw.circle(s, (160,220,255,180), (r+2,r+2), r, 2)
@@ -1480,8 +1614,8 @@ while running:
     if game.selected_map_tile is not None and game.map_tile_bench[game.selected_map_tile]:
         mx, my = pygame.mouse.get_pos()
         if my >= grid_y and mx < GRID_W:
-            gx = mx // TILE
-            gy = (my - grid_y) // TILE
+            gx, gy = screen_to_world(mx, my)
+            gx, gy = int(gx), int(gy)
             tile_data = game.map_tile_bench[game.selected_map_tile]
 
             # Use the helper to get the rotated grid
@@ -1499,9 +1633,8 @@ while running:
                 border_color = (255, 80, 80)
 
             # Draw preview at mouse position
-            preview_x = gx * TILE
-            preview_y = grid_y + gy * TILE
-            cell_size = TILE
+            preview_x, preview_y = world_to_screen(gx, gy)
+            cell_size = TILE * zoom_level
 
             for py in range(len(rotated_grid)):
                 for px in range(len(rotated_grid[py])):
@@ -1510,7 +1643,7 @@ while running:
                         s = pygame.Surface((cell_size, cell_size), pygame.SRCALPHA)
                         s.fill(fill_color)
                         screen.blit(s, rect)
-                        pygame.draw.rect(screen, border_color, rect, 2)
+                        pygame.draw.rect(screen, border_color, rect, max(1, int(2 * zoom_level)))
 
             # Draw a small validity label near the cursor
             label_text = "OK" if placement_valid else "X"
@@ -1521,27 +1654,30 @@ while running:
     # Attack beams
     for t in game.towers:
         if t.last_shot_target and frame - t.last_shot_frame < 18:
-            tx = t.x * TILE + 20
-            ty = grid_y + t.y * TILE + 20
+            tx, ty = world_to_screen(t.x, t.y)
+            tx += 20 * zoom_level
+            ty += 20 * zoom_level
             ex,ey = t.last_shot_target
-            exx = ex * TILE + 20
-            eyy = grid_y + ey * TILE + 20
+            exx, eyy = world_to_screen(ex, ey)
+            exx += 20 * zoom_level
+            eyy += 20 * zoom_level
             age = frame - t.last_shot_frame
-            w = max(2, 6 - age//3)
+            w = max(2, int((6 - age//3) * zoom_level))
             col = (*tower_colors.get(t.base_type, (180,180,255)), 255 - age*14)
             pygame.draw.line(screen, col, (tx,ty), (exx,eyy), w)
 
     # Towers
     for t in game.towers:
         col = tower_colors.get(t.base_type, (150,150,150))
-        r = pygame.Rect(t.x*TILE +6, grid_y + t.y*TILE +6, TILE-12, TILE-12)
+        tx, ty = world_to_screen(t.x, t.y)
+        r = pygame.Rect(tx + 6 * zoom_level, ty + 6 * zoom_level, (TILE * zoom_level) - 12, (TILE * zoom_level) - 12)
         pygame.draw.rect(screen, col, r)
-        pygame.draw.rect(screen, (220,220,255), r, 2)
+        pygame.draw.rect(screen, (220,220,255), r, max(1, int(2 * zoom_level)))
         # Permanent range display for Radius towers
         if t.fire_type == "Radius":
-            cx = t.x * TILE + 20
-            cy = grid_y + t.y * TILE + 20
-            rad = t.range * TILE
+            cx = tx + 20 * zoom_level
+            cy = ty + 20 * zoom_level
+            rad = t.range * TILE * zoom_level
             s = pygame.Surface((rad*2+4, rad*2+4), pygame.SRCALPHA)
             pygame.draw.circle(s, (220,120,60,80), (rad+2, rad+2), rad)
             pygame.draw.circle(s, (255,150,80,150), (rad+2, rad+2), rad, 2)
@@ -1552,12 +1688,15 @@ while running:
         pos = e.get_position()
         if pos:
             ex,ey = pos
-            c = (ex*TILE +20, grid_y + ey*TILE +20)
+            exx, eyy = world_to_screen(ex, ey)
+            c = (exx + 20 * zoom_level, eyy + 20 * zoom_level)
             enemy_color = (60, 220, 60) if e.is_egrem_spawned else ENEMY
-            pygame.draw.circle(screen, enemy_color, c, 13)
+            pygame.draw.circle(screen, enemy_color, c, max(5, int(13 * zoom_level)))
             ratio = max(0, e.health / e.max_health)
-            pygame.draw.rect(screen, HP_BG, (c[0]-20, c[1]-30, 40, 6))
-            pygame.draw.rect(screen, HP_FILL, (c[0]-20, c[1]-30, 40*ratio, 6))
+            bar_width = max(10, int(40 * zoom_level))
+            bar_height = max(2, int(6 * zoom_level))
+            pygame.draw.rect(screen, HP_BG, (c[0]-20*zoom_level, c[1]-30*zoom_level, bar_width, bar_height))
+            pygame.draw.rect(screen, HP_FILL, (c[0]-20*zoom_level, c[1]-30*zoom_level, bar_width*ratio, bar_height))
 
     # Wave bonus
     if frame < game.wave_bonus_show_until:
@@ -1578,6 +1717,12 @@ while running:
         screen.blit(s, s.get_rect(center=(WIDTH//2, HEIGHT//2)))
         r = font.render("Click anywhere to restart", True, TEXT)
         screen.blit(r, r.get_rect(center=(WIDTH//2, HEIGHT//2 +60)))
+
+    # Camera info display (top-right corner)
+    if not game.game_over:
+        camera_info = f"Zoom: {zoom_level:.1f}x | Camera: ({camera_x:.0f}, {camera_y:.0f})"
+        info_surf = font_s.render(camera_info, True, TEXT)
+        screen.blit(info_surf, (WIDTH - info_surf.get_width() - 10, 10))
 
     pygame.display.flip()
     clock.tick(60)
