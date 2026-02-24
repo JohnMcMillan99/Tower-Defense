@@ -23,11 +23,13 @@ A Borg-themed tower defense roguelike with a **merge-based tower progression sys
 ### ✅ Implemented Systems
 
 #### 1. **Shop & Bench Management**
-- **5-slot shop** with reroll button
-- **10-slot inventory bench** below shop
-- Click shop cards to add to bench (cards appear as tower objects)
-- Drag towers from bench to grid or to other bench slots
-- Reroll cost: 1 gold (not yet fully implemented in wave loop)
+- **5-slot shop** with reroll button (cost: 2 gold)
+- **3-way shop toggle** (T/M/U): cycles between **Towers**, **Map Tiles**, and **Upgrades**
+- **10-slot tower bench** below shop for tower inventory
+- **3-slot map tile bench** (bottom left) for expansion tiles
+- **3-slot upgrade bench** (bottom right) for purchased upgrades
+- Click shop cards to add to appropriate bench based on current mode
+- Reroll refreshes shop slots for current mode
 
 #### 2. **Tower Types** (5 Borg-themed hardware components)
 
@@ -74,16 +76,28 @@ A Borg-themed tower defense roguelike with a **merge-based tower progression sys
 - **Stat Scaling**: Enemy HP scales per wave: `HP = base_hp × (1 + (wave - 1) × 0.2 × difficulty)`
 - **Wave Control**: Play/Pause button, Next Wave button, manual wave triggering
 
-#### 6. **Visual Interface** (Pygame)
-- Game grid visualization (3×20 path grid)
-- Shop at top with tower cards
-- Bench slots displayed below shop
-- Control panel with wave controls, pause, volume (mocked)
-- Enemy path overlaid on grid
-- Tower and enemy rendering with Borg-themed colors
-- Status display showing current wave, gold, lives
+#### 6. **Tile-Based Map Expansion**
+- **Purchasable map tiles**: Straight, Left Turn, Right Turn, Loop (from tiles shop mode)
+- **Path connection**: Tiles must connect to existing paths; rotation support (0°, 90°, 180°, 270°)
+- **Map tile bench**: 3 slots; select tile, rotate with A/D or &lt;/&gt; buttons, place on grid
+- **Dynamic grid expansion**: Grid grows when tiles extend beyond current bounds
 
-#### 7. **Game Flow**
+#### 7. **Upgrade Shop & Bench**
+- **Upgrade shop mode**: Buy upgrades from shop (12 types: synergistic + wildcard)
+- **Upgrade bench**: 3 slots in bottom-right; store purchased upgrades
+- **Apply flow**: Select upgrade from bench → click tower on grid to apply
+- **Upgrade capacity**: 3 upgrades per tower (configurable per tower type for balancing)
+- **Visual feedback**: Green/red tower borders when upgrade selected (can/cannot apply)
+- **Keyboard shortcuts**: 1–3 keys select upgrade bench slots
+
+#### 8. **Visual Interface** (Pygame)
+- Procedurally generated path grid with expandable borders
+- Shop at top; tower bench, map tile bench, upgrade bench
+- Right panel: wave controls, pause, auto mode, tower stats when selected
+- Camera: pan (arrow keys / middle-drag), zoom (mouse wheel)
+- Enemy path overlaid on grid; tower and enemy rendering with Borg-themed colors
+
+#### 9. **Game Flow**
 - Enemy path generated procedurally via PathGenerator (from TD3.py)
 - Towers placed on grid interact with passing enemies
 - Tower damage calculation: `dmg = base_dmg × fire_rate`
@@ -100,27 +114,33 @@ Tower Defense/
 ├── td_visual.py        # Main pygame app and game loop
 ├── TD3.py              # PathGenerator algorithm
 ├── requirements.txt    # Dependencies
-└── TD3_README.md       # This file
+├── TD3_README.md       # This file
+├── data/
+│   ├── tiles.py        # Map expansion tile definitions
+│   ├── units.py        # Tower types and traits
+│   └── upgrades.py     # Software upgrade definitions
+├── models/
+│   ├── enemy.py        # Enemy types and behavior
+│   └── tower.py        # Tower model with merge/upgrade logic
+└── map/
+    └── path_graph.py   # Path connectivity for tile placement
 ```
 
 ### Core Classes
 
-#### `Tower` (lines 340-408)
+#### `Tower` (models/tower.py)
 ```python
 class Tower:
-    BASE_TYPES = {
-        "Firewall": {"dmg": 6, "range": 3, "fire_rate": 1.0},
-        "Antivirus": {"dmg": 9, "range": 2, "fire_rate": 1.0},
-        # ... etc
-    }
-    
-    def __init__(self, tower_type, x, y, parents=None)
+    UPGRADE_CAPACITY = 3  # Max upgrades per tower
+
+    def __init__(self, x, y, tower_type, parents=None)
     def _calculate_stats(self)
     def merge_towers(tower1, tower2)  # Static method
-    def get_merge_tier(self)           # Returns len(parents) // 2
+    def get_merge_tier(self)           # Returns merge_generation
+    def get_effective_traits(self)     # Base + upgrade traits
 ```
 
-#### `Enemy` (lines 275-334)
+#### `Enemy` (models/enemy.py)
 ```python
 class Enemy:
     TYPES = {
@@ -132,12 +152,14 @@ class Enemy:
     def _calculate_stats(self)  # Scales health based on wave_num
 ```
 
-#### `Game` (lines 461-705)
+#### `Game` (td_visual.py)
 - Central state manager
-- Manages shop, bench (10 slots), towers on grid, enemies
-- Handles merging logic: `select_for_merge()`, `confirm_merge()`, `cancel_merge()`
-- Wave spawning: `spawn_wave()` - progressively introduces enemy types
-- Wave updates: `update_wave()` - moves enemies, calculates damage
+- Manages shop (5 slots), tower bench (10 slots), map tile bench (3), upgrade bench (3)
+- Shop modes: `generate_shop()` for towers/tiles/upgrades
+- Merging: `select_for_merge()`, `confirm_merge()`, `cancel_merge()`, `_complete_egrem()`
+- Upgrades: `apply_upgrade_from_bench()`, `move_to_bench()` for all modes
+- Map expansion: `can_place_tile()`, `place_map_tile()`, `expand_grid()`
+- Wave spawning: `start_next_wave()`, `update_wave()`
 
 #### Main Pygame Loop (lines 1056-1180+)
 - 60 FPS game loop
@@ -164,11 +186,12 @@ The game mirrors Borg assimilation mechanics:
 5. **Assimilators** (Waves 9+): Queen-level threats, apex of adaptation
 
 ### Tower Types as Specializations
-- **Firewall** = External defense perimeter
-- **Antivirus** = Immune response, concentrated defense
-- **Encryption** = Signal jamming, fast interruption
-- **Monitor** = Surveillance network, far-reaching coverage
-- **Validator** = Authentication checkpoints, selective filtering
+- **Neural Processor** = Balanced targeting (switch, logic)
+- **Plasma Capacitor** = Burst damage (charge, burst)
+- **Thermal Regulator** = Area denial (resist, heat)
+- **Signal Router** = Path control (block, flow)
+- **Quantum Field Gen** = Global coverage (filter, magnetic)
+- **Nanite Swarm** = Egrem spawner (wrong-tier merge result)
 
 ---
 
@@ -188,32 +211,34 @@ python td_visual.py
 ```
 
 ### Controls
-- **Click shop card** → Add to bench
-- **Drag bench tower** → Move to grid or other bench slot
-- **Select tower** → Highlight for merge (turn green)
-- **Select second tower** → Merge preview appears (if same tier)
-- **Click Merge button** → Confirm merge
-- **Click Cancel** → Discard merge
-- **Play/Pause button** → Toggle wave progression
-- **Next Wave button** → Skip to next wave
+- **Shop mode toggle (T/M/U)** → Cycle towers / map tiles / upgrades
+- **Click shop card** → Add to bench (tower, tile, or upgrade depending on mode)
+- **Reroll (R)** → Refresh shop (cost: 2 gold)
+- **Select tower from bench** → Click to place on grid
+- **Select tower for merge** → Click two same-tier towers; click Merge/egrem to confirm
+- **Right-click bench tower** → Sell (50% refund)
+- **Map tiles**: Select from bench → rotate with A/D or &lt;/&gt; → click grid to place
+- **Upgrades**: Buy in shop → select from upgrade bench (click or 1–3 keys) → click tower to apply
+- **Right-click upgrade bench** → Deselect upgrade
+- **Click placed tower** → Open upgrade dialog (stats, sell, close)
+- **Arrow keys / middle-drag** → Pan camera; **mouse wheel** → Zoom
+- **Play/Pause / Next Wave / Auto** → Wave controls
 
 ---
 
 ## Current State & Testing
 
 ### ✅ What Works
-- Shop UI fully functional (card selection, bench placement, reroll)
-- Tower merging logic and UI (tier restrictions, preview, confirm)
-- Egrem system (wrong-tier merges create spawning towers)
-- Upgrade system with trait synergies and heat mechanics
-- Enemy type system with progressive introduction and debuffs
-- Wave scaling (enemies get harder each wave)
-- Gold economy (kill rewards, wave bonuses, interest, purchasing)
-- Lives system and game over screen with restart
-- Multiple tower fire types (beam, ball, directional, track, overwatch, radius, spawner)
-- Auto wave mode and staggered enemy spawning
-- Pygame rendering (towers render with correct colors, enemies spawn/move)
-- Game loop integration (waves progress, enemies spawn at intervals)
+- **Shop**: 3-way toggle (towers/tiles/upgrades), 5-slot shop, reroll
+- **Benches**: Tower bench (10), map tile bench (3), upgrade bench (3)
+- **Tower merging**: Tier restrictions, preview, confirm; Egrem (wrong-tier) spawning towers
+- **Tile-based expansion**: Purchasable tiles, rotation, path connection, dynamic grid growth
+- **Upgrade shop & bench**: Buy upgrades, store in bench, apply to towers (3 capacity each)
+- **Upgrade system**: Trait synergies, heat mechanics, 12 upgrade types
+- **Enemy system**: 5 types, progressive unlock, debuffs (slow, stun)
+- **Wave scaling**: Staggered spawning, auto mode, gold/lives
+- **Tower fire types**: Beam, ball, directional, track, overwatch, radius, spawner
+- **Camera**: Pan (arrows/middle-drag), zoom (mouse wheel)
 
 ### 🟡 Partially Tested
 - Tower damage calculations (implemented but balance needs tuning)
@@ -222,15 +247,14 @@ python td_visual.py
 - Egrem spawning balance
 
 ### ❌ Major Gaps / Future Features
-- **Tower Merge Complexity**: Current merges are generic tier progression. Missing unique combinations, merge trees, and strategic depth.
-- **Enemy Adaptation**: Enemies are static types. Missing dynamic response to player strategies (tower types, placements, merges).
-- **Expanding Grid System**: Fixed 3x20 grid. Missing tile-based expansion, path connections, shop rotation.
-- **Enemy Difficulty Tiers**: Current types don't map to normal/elite/mini-boss/boss/event with tied scaling.
-- **Performance Optimizations**: Need spatial hashing, object pooling for larger maps/enemies.
+- **Tower Merge Complexity**: Generic tier progression. Missing unique combinations, merge trees, strategic depth.
+- **Enemy Adaptation**: Static types. Missing dynamic response to player strategies.
+- **Enemy Difficulty Tiers**: Types don't map to normal/elite/mini-boss/boss/event with tied scaling.
+- **Per-Tower Upgrade Capacity**: Currently 3 for all; tune individually for balancing.
+- **Performance Optimizations**: Spatial hashing, object pooling for larger maps/enemies.
 - **Sound/Music**: Audio effects (volume button is placeholder).
 - **Difficulty Modes**: Hard, Hardcore variants.
 - **Leaderboard**: High score tracking.
-- **Map Variations**: Multiple procedural paths.
 
 ---
 
@@ -271,21 +295,23 @@ python td_visual.py
 10. **Phase 10**: Added game over screen with restart button and final stats display
 11. **Phase 11**: Implemented staggered enemy spawning (queue-based) to prevent overwhelming waves
 12. **Phase 12**: Fixed bench-to-grid placement workflow and added bench selling (right-click for 50% refund)
+13. **Phase 13**: Tile-based map expansion (purchasable tiles, rotation, path connection, dynamic grid)
+14. **Phase 14**: 3-way shop toggle (towers/tiles/upgrades), upgrade shop, upgrade bench, apply-from-bench flow
+15. **Phase 15**: Tower upgrade capacity (3 per tower), visual feedback for upgrade application
 
-Current focus: Core economy and wave systems stable; next priorities are visual polish (projectiles, range preview) and advanced mechanics (tower synergies).
+Current focus: Shop/bench/upgrade flow complete; next priorities are balance tuning and advanced mechanics.
 
 ---
 
 ## Phased Development Roadmap
 
-### Phase 1: Expanding Grid System (Current Focus)
+### Phase 1: Expanding Grid System (Completed)
 **Goal**: Implement tile-based map expansion with shop rotation.
-- **Tile-Based Expansion**: Purchasable map tiles (2x2, 3x3) with embedded paths.
-- **Path Connection**: Tiles must connect to existing paths, with rotation support.
-- **Fill Mechanic**: Auto-generate paths for imperfect alignments.
-- **Shop Rotation**: Cycles between Towers, Expansion Tiles, Upgrades.
-- **Performance**: Spatial hashing for larger grids, object pooling.
-- **Status**: Design outlined, implementation pending.
+- **Tile-Based Expansion**: Purchasable map tiles (Straight, Left/Right Turn, Loop) with embedded paths.
+- **Path Connection**: Tiles must connect to existing paths, with rotation support (0–270°).
+- **Shop Rotation**: Cycles between Towers, Map Tiles, Upgrades (T/M/U toggle).
+- **Upgrade Shop & Bench**: Buy upgrades from shop, store in 3-slot bench, apply to towers.
+- **Status**: Implemented.
 
 ### Phase 2: Enemy Complexity Overhaul
 **Goal**: Add adaptive enemies with tiered difficulty.
@@ -316,4 +342,6 @@ Current focus: Core economy and wave systems stable; next priorities are visual 
 | **Bench placement workflow** | ✅ Done | Click-to-select, place on grid |
 | **Sell from bench** | ✅ Done | Right-click for 50% refund |
 | **Upgrade system** | ✅ Done | Traits, synergies, heat mechanics |
+| **Tile-based expansion** | ✅ Done | Purchasable tiles, rotation, path connection |
+| **Upgrade shop & bench** | ✅ Done | 3-way shop, upgrade bench, apply-from-bench flow |
 | **Auto wave mode** | ✅ Done | Toggle for automatic progression |

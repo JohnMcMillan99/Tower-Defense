@@ -86,8 +86,10 @@ class Game:
         self.shop = [None] * 5
         self.bench = [None] * 10
         self.map_tile_bench = [None] * 3  # Separate bench for map tiles (increased size)
+        self.upgrade_bench = [None] * 3  # Upgrade bench - stores upgrade IDs
         self.selected_tower = None
         self.selected_map_tile = None  # Selected tile from map bench
+        self.selected_upgrade = None  # Selected upgrade from upgrade bench
         self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
         self.merge_tower_1 = None
         self.merge_tower_2 = None
@@ -159,6 +161,10 @@ class Game:
                 elif self.shop_mode == "tiles":
                     tile = random.choice(TILE_TYPES)
                     self.shop[i] = {"type": tile["name"], "cost": tile["base_cost"], "tile_data": tile}
+                elif self.shop_mode == "upgrades":
+                    upgrade_id = random.choice(list(UPGRADE_DEFS.keys()))
+                    u = UPGRADE_DEFS[upgrade_id]
+                    self.shop[i] = {"type": upgrade_id, "cost": u["cost"], "name": u["name"], "desc": u["desc"]}
 
     def move_to_bench(self, shop_idx):
         if shop_idx < 0 or shop_idx >= 5 or self.shop[shop_idx] is None:
@@ -177,6 +183,16 @@ class Game:
                     self.shop[shop_idx] = None
                     return True
             return False
+        elif self.shop_mode == "upgrades":
+            # Move upgrade to upgrade bench
+            upgrade_id = card["type"]
+            for i in range(3):
+                if self.upgrade_bench[i] is None:
+                    self.upgrade_bench[i] = upgrade_id
+                    self.gold -= card["cost"]
+                    self.shop[shop_idx] = None
+                    return True
+            return False  # Bench full
         else:
             # Move tower to regular bench
             tower = Tower(0, 0, card["type"])
@@ -466,6 +482,8 @@ class Game:
     def apply_upgrade(self, tower, upgrade_id):
         if upgrade_id not in UPGRADE_DEFS or upgrade_id in tower.upgrades:
             return False
+        if len(tower.upgrades) >= tower.UPGRADE_CAPACITY:
+            return False  # Tower at capacity
         u = UPGRADE_DEFS[upgrade_id]
         if self.gold < u["cost"]:
             return False
@@ -473,6 +491,24 @@ class Game:
         tower.gold_invested += u["cost"]
         tower.upgrades.append(upgrade_id)
         tower._calculate_stats()
+        return True
+
+    def apply_upgrade_from_bench(self, tower, upgrade_id, bench_idx):
+        """Apply upgrade from bench to tower (no additional gold cost)."""
+        if upgrade_id not in UPGRADE_DEFS or upgrade_id in tower.upgrades:
+            return False
+        if len(tower.upgrades) >= tower.UPGRADE_CAPACITY:
+            return False  # Tower at capacity
+        if self.upgrade_bench[bench_idx] != upgrade_id:
+            return False  # Upgrade not in bench slot
+
+        # Apply upgrade to tower
+        tower.upgrades.append(upgrade_id)
+        tower._calculate_stats()
+
+        # Remove from bench
+        self.upgrade_bench[bench_idx] = None
+
         return True
 
     def start_next_wave(self):
@@ -948,6 +984,10 @@ while running:
                 camera_x = 0
                 camera_y = 0
                 zoom_level = 1.0
+            elif pygame.K_1 <= event.key <= pygame.K_3:  # Upgrade bench shortcuts
+                slot_idx = event.key - pygame.K_1
+                if game.upgrade_bench[slot_idx] is not None:
+                    game.selected_upgrade = slot_idx if game.selected_upgrade != slot_idx else None
         elif event.type == pygame.MOUSEWHEEL:
             # Zoom in/out with mouse wheel
             old_zoom = zoom_level
@@ -960,9 +1000,12 @@ while running:
                 camera_y = my - grid_y - (wy * TILE * zoom_level)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
+            upgrade_bench_x = GRID_W + 10
+            upgrade_bench_y = HEIGHT - 100
             tile_placement_log("MOUSEBUTTONDOWN", {
                 "button": event.button, "mx": mx, "my": my,
                 "grid_y": grid_y, "map_bench_y": map_bench_y, "GRID_W": GRID_W,
+                "upgrade_bench_x": upgrade_bench_x, "upgrade_bench_y": upgrade_bench_y,
                 "selected_map_tile": game.selected_map_tile,
                 "in_grid_region": my >= grid_y and mx < GRID_W,
                 "in_map_bench_region": my >= map_bench_y and my < map_bench_y + 80
@@ -974,40 +1017,29 @@ while running:
                 # Upgrade dialog (when open) — check first so dialog clicks in right panel are handled
                 if game.upgrade_dialog_tower is not None:
                     t = game.upgrade_dialog_tower
-                    base_height = 320
+                    base_height = 280  # Updated to match dialog height
                     upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
                     dialog_height = base_height + upgrade_height
                     dialog_rect = pygame.Rect(GRID_W + 8, 162, 164, dialog_height)
                     if dialog_rect.collidepoint(mx, my):
                         t = game.upgrade_dialog_tower
-                        opts_y = [200, 234, 268]
-                        choices = getattr(game, "upgrade_dialog_choices", [])
-                        for i, uid in enumerate(choices):
-                            if i >= 3:
-                                break
-                            r = pygame.Rect(GRID_W + 10, opts_y[i], 160, 32)
-                            if r.collidepoint(mx, my):
-                                if game.apply_upgrade(t, uid):
-                                    game.upgrade_dialog_choices = game.get_upgrade_choices(t)
-                                break
+                        # Direction selector for Track towers
+                        if t.fire_type == "Track":
+                            for d in range(4):
+                                dx = GRID_W + 14 + d * 35
+                                dy = 318
+                                r = pygame.Rect(dx, dy, 30, 20)
+                                if r.collidepoint(mx, my):
+                                    t.track_direction = d
+                                    break
                         else:
-                            # Direction selector for Track towers
-                            if t.fire_type == "Track":
-                                for d in range(4):
-                                    dx = GRID_W + 14 + d * 35
-                                    dy = 318
-                                    r = pygame.Rect(dx, dy, 30, 20)
-                                    if r.collidepoint(mx, my):
-                                        t.track_direction = d
-                                        break
-                            else:
-                                sell_r = pygame.Rect(GRID_W + 10, 306, 75, 24)
-                                close_r = pygame.Rect(GRID_W + 95, 306, 75, 24)
-                                if sell_r.collidepoint(mx, my):
-                                    game.sell_tower_from_grid(t.x, t.y)
-                                    game.upgrade_dialog_tower = None
-                                elif close_r.collidepoint(mx, my):
-                                    game.upgrade_dialog_tower = None
+                            sell_r = pygame.Rect(GRID_W + 10, 266, 75, 24)  # Updated position
+                            close_r = pygame.Rect(GRID_W + 95, 266, 75, 24)  # Updated position
+                            if sell_r.collidepoint(mx, my):
+                                game.sell_tower_from_grid(t.x, t.y)
+                                game.upgrade_dialog_tower = None
+                            elif close_r.collidepoint(mx, my):
+                                game.upgrade_dialog_tower = None
                     else:
                         # Clicked outside dialog - deselect tower
                         game.upgrade_dialog_tower = None
@@ -1033,7 +1065,13 @@ while running:
                     tx = map_bench_x + 3*80 + 20
                     ty = map_bench_y
                     if tx <= mx <= tx+35 and ty <= my <= ty+35:
-                        game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
+                        # Cycle through modes: towers → tiles → upgrades → towers
+                        if game.shop_mode == "towers":
+                            game.shop_mode = "tiles"
+                        elif game.shop_mode == "tiles":
+                            game.shop_mode = "upgrades"
+                        else:  # "upgrades"
+                            game.shop_mode = "towers"
                         game.shop = [None] * 5  # Clear shop when switching modes
                         game.generate_shop()
                     # Reroll
@@ -1109,7 +1147,13 @@ while running:
                     tx = map_bench_x + 3*80 + 20
                     ty = map_bench_y
                     if tx <= mx <= tx+35 and ty <= my <= ty+35:
-                        game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
+                        # Cycle through modes: towers → tiles → upgrades → towers
+                        if game.shop_mode == "towers":
+                            game.shop_mode = "tiles"
+                        elif game.shop_mode == "tiles":
+                            game.shop_mode = "upgrades"
+                        else:  # "upgrades"
+                            game.shop_mode = "towers"
                         game.shop = [None] * 5  # Clear shop when switching modes
                         game.generate_shop()
                     # Map tile bench selection
@@ -1120,6 +1164,16 @@ while running:
                             if game.map_tile_bench[i] is not None:
                                 game.selected_map_tile = i
                                 game.selected_tile_rotation = 0
+                                break
+                # Upgrade Bench (bottom right)
+                elif mx >= GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
+                    for i in range(3):
+                        x = upgrade_bench_x + i * 55
+                        y = upgrade_bench_y
+                        if x <= mx <= x+50 and y <= my <= y+80:
+                            if game.upgrade_bench[i] is not None:
+                                # Toggle selection: if already selected, deselect; else select
+                                game.selected_upgrade = i if game.selected_upgrade != i else None
                                 break
                 # Grid: place from bench, place map tile, select enemy, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
@@ -1169,11 +1223,18 @@ while running:
                                         enemy_selected = True
                                         break
                             if not enemy_selected:
-                                # Left-click on placed tower: open upgrade dialog
+                                # Left-click on placed tower
                                 for t in game.towers:
                                     if t.x == gx and t.y == gy:
-                                        game.upgrade_dialog_tower = t
-                                        game.upgrade_dialog_choices = game.get_upgrade_choices(t)
+                                        if game.selected_upgrade is not None:
+                                            # Apply selected upgrade from bench to tower
+                                            upgrade_id = game.upgrade_bench[game.selected_upgrade]
+                                            if game.apply_upgrade_from_bench(t, upgrade_id, game.selected_upgrade):
+                                                game.selected_upgrade = None  # Clear selection after successful apply
+                                        else:
+                                            # Open upgrade dialog
+                                            game.upgrade_dialog_tower = t
+                                            game.upgrade_dialog_choices = game.get_upgrade_choices(t)
                                         game.selected_enemy = None  # Clear enemy selection
                                         break
                                 else:
@@ -1192,6 +1253,9 @@ while running:
                         if x <= mx <= x+60 and y <= my <= y+90:
                             game.sell_from_bench(i)
                             break
+                # Deselect upgrade from upgrade bench
+                elif mx >= GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
+                    game.selected_upgrade = None
                 # Sell grid (60% of gold invested)
                 elif my >= grid_y and mx < GRID_W:
                     gx, gy = screen_to_world(mx, my)
@@ -1226,7 +1290,7 @@ while running:
         pygame.draw.rect(screen, col, (x,y,70,100))
         pygame.draw.rect(screen, TEXT, (x,y,70,100), 1 if card else 2)
         if card:
-            # Display tile info differently for tiles vs towers
+            # Display info differently for tiles vs towers vs upgrades
             if "tile_data" in card:
                 tile = card["tile_data"]
                 screen.blit(font_s.render(tile["name"][:10], True, TEXT), (x+5,y+5))
@@ -1241,7 +1305,17 @@ while running:
                         if path_grid[py][px]:
                             pygame.draw.rect(screen, PATH, (start_x + px*cell_size, start_y + py*cell_size, cell_size, cell_size))
                 screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
+            elif "name" in card:
+                # Upgrade card
+                name = card["name"]
+                desc = card["desc"]
+                screen.blit(font_s.render(name[:10], True, TEXT), (x+5,y+5))
+                # Show short description
+                screen.blit(font_s.render(desc[:12], True, (180,180,200)), (x+5,y+20))
+                screen.blit(font_s.render(desc[12:24] if len(desc) > 12 else "", True, (180,180,200)), (x+5,y+35))
+                screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
             else:
+                # Tower card
                 screen.blit(font_s.render(card["type"][:8], True, TEXT), (x+5,y+10))
                 screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
 
@@ -1250,7 +1324,9 @@ while running:
     ty = map_bench_y
     pygame.draw.rect(screen, CARD_BG, (tx,ty,35,35))
     pygame.draw.rect(screen, TEXT, (tx,ty,35,35), 1)
-    screen.blit(font_s.render("T" if game.shop_mode == "towers" else "M", True, TEXT), (tx+10,ty+10))
+    # Show T/M/U based on current shop mode
+    mode_char = "T" if game.shop_mode == "towers" else ("M" if game.shop_mode == "tiles" else "U")
+    screen.blit(font_s.render(mode_char, True, TEXT), (tx+10,ty+10))
 
     # Reroll
     rx = 15 + 400
@@ -1279,6 +1355,34 @@ while running:
             tile = game.map_tile_bench[i]
             screen.blit(font_s.render(tile["name"][:8], True, TEXT), (x+5,y+10))
             screen.blit(font_s.render(f"{tile['width']}x{tile['height']}", True, TEXT), (x+5,y+50))
+
+    # Upgrade Bench (bottom right, in right panel)
+    upgrade_bench_x = GRID_W + 10
+    upgrade_bench_y = HEIGHT - 100
+    pygame.draw.rect(screen, SHOP_BG, (GRID_W, upgrade_bench_y-10, PANEL_RIGHT_W, 100))
+    pygame.draw.line(screen, GRID, (GRID_W, upgrade_bench_y-10), (WIDTH, upgrade_bench_y-10), 2)
+    screen.blit(font_s.render("UPGRADES", True, TEXT), (GRID_W + 15, upgrade_bench_y-5))
+    for i in range(3):
+        x = upgrade_bench_x + i * 55  # 3 slots of ~55px each fit in 180px panel
+        y = upgrade_bench_y
+        col = CARD_EMP if game.upgrade_bench[i] is None else CARD_BG
+        if i == game.selected_upgrade:
+            col = CARD_SEL
+        pygame.draw.rect(screen, col, (x, y, 50, 80))
+        pygame.draw.rect(screen, TEXT, (x, y, 50, 80), 2)
+        if game.upgrade_bench[i]:
+            upgrade_id = game.upgrade_bench[i]
+            u = UPGRADE_DEFS.get(upgrade_id, {})
+            name = u.get("name", upgrade_id)
+            # Abbreviate long names
+            if len(name) > 8:
+                name = name[:6] + ".."
+            screen.blit(font_s.render(name, True, TEXT), (x+3, y+5))
+            screen.blit(font_s.render(f"${u.get('cost', 0)}", True, TEXT), (x+3, y+60))
+
+    # Hint text for upgrade bench
+    hint_text = "Click or press 1-3 to select"
+    screen.blit(font_s.render(hint_text, True, (160, 160, 180)), (GRID_W + 15, upgrade_bench_y + 85))
 
     # Rotate button next to map bench
     if game.selected_map_tile is not None:
@@ -1417,7 +1521,7 @@ while running:
         t = game.upgrade_dialog_tower
 
         # Calculate dynamic dialog height based on upgrades
-        base_height = 320
+        base_height = 280  # Reduced since no upgrade options
         upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
         dialog_height = base_height + upgrade_height
 
@@ -1427,23 +1531,17 @@ while running:
         screen.blit(font.render("Upgrade", True, TEXT), (GRID_W + 14, 168))
         screen.blit(font_s.render(f"{t.base_type}  D:{t.dmg} R:{t.range}", True, TEXT), (GRID_W + 14, 184))
 
-        # Upgrade options
-        opts_y = [200, 234, 268]
-        for i, uid in enumerate(getattr(game, "upgrade_dialog_choices", [])):
-            if i >= 3:
-                break
-            u = UPGRADE_DEFS.get(uid, {})
-            name = u.get("name", uid)
-            cost = u.get("cost", 0)
-            desc = u.get("desc", "")
-            r = pygame.Rect(GRID_W + 10, opts_y[i], 160, 32)
-            pygame.draw.rect(screen, CARD_BG, r)
-            pygame.draw.rect(screen, TEXT, r, 1)
-            screen.blit(font_s.render(f"{name} ${cost}", True, TEXT), (GRID_W + 14, opts_y[i] + 4))
-            screen.blit(font_s.render(desc[:28], True, (180, 180, 200)), (GRID_W + 14, opts_y[i] + 16))
+        # Upgrade capacity info
+        capacity_text = f"Upgrades: {len(t.upgrades)}/{t.UPGRADE_CAPACITY}"
+        capacity_color = (180, 180, 200) if len(t.upgrades) < t.UPGRADE_CAPACITY else (255, 150, 150)
+        screen.blit(font_s.render(capacity_text, True, capacity_color), (GRID_W + 14, 200))
+
+        # Hint text
+        screen.blit(font_s.render("Select upgrade from bench,", True, (160, 160, 180)), (GRID_W + 14, 220))
+        screen.blit(font_s.render("then click tower to apply", True, (160, 160, 180)), (GRID_W + 14, 235))
 
         # Sell and Close buttons - adjust position based on dialog height
-        button_y = 306 + upgrade_height
+        button_y = 266 + upgrade_height
         pygame.draw.rect(screen, (120, 80, 80), (GRID_W + 10, button_y, 75, 24))
         pygame.draw.rect(screen, TEXT, (GRID_W + 10, button_y, 75, 24), 1)
         screen.blit(font_s.render("Sell 60%", True, TEXT), (GRID_W + 18, button_y + 4))
@@ -1672,7 +1770,18 @@ while running:
         tx, ty = world_to_screen(t.x, t.y)
         r = pygame.Rect(tx + 6 * zoom_level, ty + 6 * zoom_level, (TILE * zoom_level) - 12, (TILE * zoom_level) - 12)
         pygame.draw.rect(screen, col, r)
-        pygame.draw.rect(screen, (220,220,255), r, max(1, int(2 * zoom_level)))
+
+        # Visual feedback when upgrade is selected for application
+        if game.selected_upgrade is not None:
+            upgrade_id = game.upgrade_bench[game.selected_upgrade]
+            if upgrade_id and len(t.upgrades) < t.UPGRADE_CAPACITY and upgrade_id not in t.upgrades:
+                # Tower can receive this upgrade - green border
+                pygame.draw.rect(screen, (100,255,100), r, max(2, int(4 * zoom_level)))
+            else:
+                # Tower cannot receive this upgrade - red border
+                pygame.draw.rect(screen, (255,100,100), r, max(2, int(4 * zoom_level)))
+        else:
+            pygame.draw.rect(screen, (220,220,255), r, max(1, int(2 * zoom_level)))
         # Permanent range display for Radius towers
         if t.fire_type == "Radius":
             cx = tx + 20 * zoom_level

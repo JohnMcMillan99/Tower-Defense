@@ -6,6 +6,8 @@ from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
 from data.units import TOWER_TRAITS
 
 class Tower:
+    UPGRADE_CAPACITY = 3  # Maximum upgrades per tower
+
     BASE_TYPES = {
         "Neural Processor": {"dmg": 6,  "range": 2, "fire_rate": 1, "display": "Neural Processor", "fire_type": "TargetBeam"},
         "Plasma Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Plasma Capacitor", "fire_type": "Ball"},   # slow charge, big burst

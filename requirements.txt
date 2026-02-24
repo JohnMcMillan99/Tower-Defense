@@ -1,1 +1,4 @@
+# Tower Defense 3: Borg Assimilation
+# Python 3.11+ recommended
+
 pygame>=2.0
