@@ -14,7 +14,7 @@ from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, UPGRADE_SYNERGY, UPGRADE_WILDCARD, EGREM_SPAWN_CONFIG
 
 # Keep using TD3 for now until imports are stable
-from TD3 import PathGenerator
+from utils.path_generator import PathGenerator
 
 
 # ==============================

@@ -206,8 +206,44 @@ pip install -r requirements.txt         # Install pygame
 ```
 
 ### Run Game
+
+#### Desktop (Local)
 ```powershell
-python td_visual.py
+python main.py
+```
+
+#### Browser (Web)
+```powershell
+pip install pygbag  # Install pygbag for browser packaging
+pygbag "Tower Defense"  # From parent directory of Tower Defense/
+```
+Then open [http://localhost:8000](http://localhost:8000) in your browser and click to start the game. Note: Browser mode runs with reduced enemy counts for performance.
+
+### Project Structure (Post-Refactor)
+
+The codebase has been modularized for better maintainability:
+
+```
+Tower-Defense/
+├── main.py                 # Entry point: initializes game and UI
+├── core/                   # Game logic
+│   ├── game.py            # Game state and orchestration
+│   ├── economy.py         # Shop, bench, merge, egrem logic
+│   └── wave_manager.py    # Enemy spawning and wave updates
+├── models/                # Entity classes (Tower, Enemy)
+├── map/                   # Path graph logic
+├── data/                  # Game constants (units, tiles, upgrades)
+├── ui/                    # User interface
+│   ├── renderer.py        # Pygame drawing and camera
+│   └── events.py          # Input handling
+├── utils/                 # Utilities
+│   └── path_generator.py  # Map path generation
+├── tests/                 # Unit tests (pytest)
+│   ├── test_tower.py
+│   ├── test_enemy.py
+│   ├── test_path.py
+│   └── test_path_sim.py
+└── requirements.txt       # Dependencies (pygame, pytest)
 ```
 
 ### Controls
