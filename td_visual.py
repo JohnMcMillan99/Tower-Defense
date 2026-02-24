@@ -1,459 +1,62 @@
 import os
 import sys
+import json
 import random
 import pygame
+from enum import Enum
+
+# Import modules
+from models.enemy import Enemy
+from models.tower import Tower
+from map.path_graph import PathGraph
+from data.tiles import TILE_TYPES
+from data.units import UNIT_TYPES, TOWER_TRAITS
+from data.upgrades import UPGRADE_DEFS, UPGRADE_SYNERGY, UPGRADE_WILDCARD, EGREM_SPAWN_CONFIG
+
+# Keep using TD3 for now until imports are stable
 from TD3 import PathGenerator
 
 
 # ==============================
-# ENEMY
+# DIRECTIONS
 # ==============================
-class Enemy:
-    TYPES = {
-        "Drone":    {"health": 10, "speed": 10, "difficulty": 1, "display": "Drone", "symbol": "D"},
-        "Scout":    {"health": 8,  "speed": 6,  "difficulty": 1, "display": "Scout", "symbol": "S"},
-        "Harvester": {"health": 15, "speed": 12, "difficulty": 2, "display": "Harvester", "symbol": "H"},
-        "Adaptor":  {"health": 20, "speed": 8,  "difficulty": 2, "display": "Adaptor", "symbol": "A"},
-        "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
-    }
-    
-    def __init__(self, path, enemy_type="Drone", wave_num=1, is_egrem_spawned=False):
-        self.path = path
-        self.position_index = 0
-        self.enemy_type = enemy_type if enemy_type in self.TYPES else "Drone"
-        self.wave_num = wave_num
-        self.alive = True
-        self.leaked = False
-        self.move_counter = 0.0
-        self.is_egrem_spawned = is_egrem_spawned
-        self.debuffs = {}  # debuff_type: {'amount': val, 'frames_left': int}
-        self._calculate_stats()
-    
-    def _calculate_stats(self):
-        base_stats = self.TYPES.get(self.enemy_type, self.TYPES["Drone"])
-        difficulty = base_stats["difficulty"]
-        wave_scale = 1.0 + (self.wave_num - 1) * 3.5 * difficulty
-        self.max_health = int(base_stats["health"] * wave_scale)
-        self.health = self.max_health
-        self.move_speed = base_stats["speed"]
-        self.difficulty = difficulty
-        self.display_name = base_stats["display"]
-        self.symbol = base_stats["symbol"]
-
-    def move(self):
-        if not self.alive or self.leaked:
-            return
-        increment = 1.0
-        if 'slow' in self.debuffs:
-            slow_pct = self.debuffs['slow']['amount'] / 100.0
-            increment = 1.0 * (1 - slow_pct)
-            self.debuffs['slow']['frames_left'] -= 1
-            if self.debuffs['slow']['frames_left'] <= 0:
-                del self.debuffs['slow']
-        self.move_counter += increment
-        if self.move_counter >= self.move_speed:
-            self.move_counter -= self.move_speed
-            self.position_index += 1
-            if self.position_index >= len(self.path):
-                self.leaked = True
-                self.alive = False
-
-    def get_position(self):
-        if 0 <= self.position_index < len(self.path):
-            return self.path[self.position_index]
-        return None
-
-    def take_damage(self, dmg):
-        self.health -= dmg
-        if self.health <= 0:
-            self.alive = False
-            return True
-        return False
-
-    def apply_debuff(self, debuff_type, amount, duration):
-        if debuff_type not in self.debuffs:
-            self.debuffs[debuff_type] = {'amount': amount, 'frames_left': duration}
-        else:
-            if duration > self.debuffs[debuff_type]['frames_left']:
-                self.debuffs[debuff_type]['frames_left'] = duration
-            self.debuffs[debuff_type]['amount'] = max(self.debuffs[debuff_type]['amount'], amount)
+class Direction(Enum):
+    N = (0, -1)   # dy = -1 (up)
+    S = (0, 1)    # dy = 1 (down)
+    E = (1, 0)    # dx = 1 (right)
+    W = (-1, 0)   # dx = -1 (left)
 
 
 # ==============================
 # SHOP UNIT TYPES (Hardware Components)
 # ==============================
-UNIT_TYPES = [
-    {"name": "Neural Processor", "base_cost": 3},
-    {"name": "Plasma Capacitor",  "base_cost": 4},
-    {"name": "Thermal Regulator",   "base_cost": 3},
-    {"name": "Signal Router",      "base_cost": 4},
-    {"name": "Quantum Field Gen",   "base_cost": 5},
-]
+# UNIT_TYPES imported from data.units module above
 
 # ==============================
-# SHOP TILE TYPES (Map Expansion)
+# Constants imported from data modules above
 # ==============================
-TILE_TYPES = [
-    {
-        "name": "Straight Tile",
-        "width": 2, "height": 1,
-        "base_cost": 5,
-        "path_grid": [[True, True]]  # 2x1 path from left to right
-    },
-    {
-        "name": "Curve Tile",
-        "width": 2, "height": 2,
-        "base_cost": 8,
-        "path_grid": [
-            [True, False],
-            [True, True]
-        ]  # L-shape: left to bottom
-    },
-    {
-        "name": "T-Junction",
-        "width": 2, "height": 2,
-        "base_cost": 10,
-        "path_grid": [
-            [True, True],
-            [False, True]
-        ]  # T-shape: left, right, down
-    },
-    {
-        "name": "Cross Tile",
-        "width": 2, "height": 2,
-        "base_cost": 12,
-        "path_grid": [
-            [True, True],
-            [True, True]
-        ]  # Cross: all directions
-    },
-    {
-        "name": "Large Straight",
-        "width": 3, "height": 1,
-        "base_cost": 7,
-        "path_grid": [[True, True, True]]  # 3x1 path
-    },
-]
-
 # ==============================
-# HARDWARE TRAITS (for software synergy)
-# ==============================
-TOWER_TRAITS = {
-    "Neural Processor": ["switch", "logic"],
-    "Plasma Capacitor":  ["charge", "burst"],
-    "Thermal Regulator":   ["resist", "heat"],
-    "Signal Router":      ["block", "flow"],
-    "Quantum Field Gen":   ["filter", "magnetic"],
-    "Nanite Swarm":      ["egrem", "spawner"],
-}
-
-# ==============================
-# SOFTWARE UPGRADES (firmware patches)
-# id → {name, desc, cost, traits, synergizes_with, dmg_mult, range_bonus, fire_rate_mult, heat_delta}
-# heat_delta >0 = generates heat, <0 = cools / clears heat
-# ==============================
-UPGRADE_DEFS = {
-    # Synergistic upgrades
-    "switch_1": {"name": "Overclock Driver",     "desc": "+25% dmg, +heat",         "cost": 4,  "traits": ["switch"],   "synergizes_with": ["switch", "logic"],   "dmg_mult": 0.25, "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 1.5},
-    "switch_2": {"name": "Burst Gate Firmware",  "desc": "+40% fire rate",          "cost": 6,  "traits": ["switch"],   "synergizes_with": ["switch"],             "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0.40, "heat_delta": 2.0},
-    "charge_1": {"name": "Supercap Patch",       "desc": "+1 range, faster charge", "cost": 4,  "traits": ["charge"],   "synergizes_with": ["charge", "burst"],   "dmg_mult": 0,    "range_bonus": 1, "fire_rate_mult": 0,    "heat_delta": -0.5},
-    "charge_2": {"name": "EMP Discharge",        "desc": "AoE stun on burst",       "cost": 7,  "traits": ["charge"],   "synergizes_with": ["charge"],             "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 1.0},  # stun logic added later
-    "resist_1": {"name": "Cooling Heatsink",     "desc": "Aura: -heat nearby",      "cost": 5,  "traits": ["resist"],   "synergizes_with": ["resist", "heat"],     "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0.15, "heat_delta": -1.2},
-    "resist_2": {"name": "Thermal Throttle",     "desc": "Slow enemies 30%",        "cost": 6,  "traits": ["resist"],   "synergizes_with": ["resist"],             "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 0},    # slow aura added later
-    "block_1":  {"name": "Rectifier Shield",     "desc": "Block 20% debuffs",       "cost": 4,  "traits": ["block"],    "synergizes_with": ["block", "flow"],      "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": -0.8},
-    "block_2":  {"name": "Laser Diode Focus",    "desc": "Piercing beam (2 hits)",  "cost": 6,  "traits": ["block"],    "synergizes_with": ["block"],              "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 0.5},
-    "filter_1": {"name": "Inductive Trap",       "desc": "Pull enemies closer",     "cost": 5,  "traits": ["filter"],   "synergizes_with": ["filter", "magnetic"], "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 0},
-    "filter_2": {"name": "EMI Filter",           "desc": "Stun fast enemies",       "cost": 7,  "traits": ["filter"],   "synergizes_with": ["filter"],             "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": 1.0},
-
-    # Wildcard / general upgrades
-    "wild_1":   {"name": "Quantum Patch",        "desc": "+15% all stats",          "cost": 5,  "traits": ["wildcard"], "synergizes_with": [],                     "dmg_mult": 0.15, "range_bonus": 0, "fire_rate_mult": 0.15, "heat_delta": 0.5},
-    "wild_2":   {"name": "Nanite Antivirus",     "desc": "Kill gives +1 gold",      "cost": 4,  "traits": ["wildcard"], "synergizes_with": [],                     "dmg_mult": 0,    "range_bonus": 0, "fire_rate_mult": 0,    "heat_delta": -0.3},
-}
-
-# Separate lists for choice logic
-UPGRADE_SYNERGY = [k for k in UPGRADE_DEFS if not k.startswith("wild")]
-UPGRADE_WILDCARD = [k for k in UPGRADE_DEFS if k.startswith("wild")]
 
 # ==============================
 # EGREM SPAWNING CONFIG
 # ==============================
-# Maps tower types to spawn parameters: {enemy_type, spawn_count, spawn_interval_frames}
-EGREM_SPAWN_CONFIG = {
-    "Neural Processor": {"enemy_type": "Drone",       "base_spawn": 2, "spawn_interval": 90, "wave_scale": 1.0},
-    "Plasma Capacitor":  {"enemy_type": "Harvester",   "base_spawn": 1, "spawn_interval": 120, "wave_scale": 1.2},
-    "Thermal Regulator":   {"enemy_type": "Drone",       "base_spawn": 3, "spawn_interval": 60, "wave_scale": 0.8},
-    "Signal Router":      {"enemy_type": "Scout",       "base_spawn": 2, "spawn_interval": 75, "wave_scale": 1.1},
-    "Quantum Field Gen":   {"enemy_type": "Adaptor",     "base_spawn": 1, "spawn_interval": 100, "wave_scale": 1.3},
-}
+# EGREM_SPAWN_CONFIG imported from data.upgrades module above
 
-# ==============================
-# TOWER (Hardware + Software Upgrades)
-# ==============================
-class Tower:
-    BASE_TYPES = {
-        "Neural Processor": {"dmg": 6,  "range": 2, "fire_rate": 1, "display": "Neural Processor", "fire_type": "TargetBeam"},
-        "Plasma Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Plasma Capacitor", "fire_type": "Ball"},   # slow charge, big burst
-        "Thermal Regulator":   {"dmg": 4,  "range": 3, "fire_rate": 2, "display": "Thermal Regulator", "fire_type": "DirectionalBeam"},
-        "Signal Router":      {"dmg": 7,  "range": 4, "fire_rate": 2, "display": "Signal Router", "fire_type": "Track"},
-        "Quantum Field Gen":   {"dmg": 2,  "range": 99, "fire_rate": 10, "display": "Quantum Field Gen", "fire_type": "Overwatch"},
-        "Nanite Swarm":      {"dmg": 0,  "range": 0, "fire_rate": 0, "display": "Nanite Swarm", "fire_type": "Spawner"},       # spawns enemies, no attack
-    }
 
-    def __init__(self, x, y, tower_type="Neural Processor", parents=None):
-        self.x = x
-        self.y = y
-        self.base_type = tower_type if tower_type in self.BASE_TYPES else "Neural Processor"
-        base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Neural Processor"])
-        self.fire_type = base.get("fire_type", "Ball")
-        self.parents = parents or []
-        self.merge_generation = 0  # Track tier: 0=T0, 1=T1, 2=T2, etc.
-        self.cooldown = 0
-        self.last_shot_target = None
-        self.last_shot_frame = 0
-        self.gold_invested = 0
-        self.upgrades = []          # list of upgrade ids
-        self.heat = 0.0             # NEW: heat buildup mechanic
-        self.max_heat = 10.0
-        self.status_effects = {}    # e.g. {'stun': 120 frames}
-        self.buffs = {}             # buff_type: {'amount': val, 'frames_left': int}
 
-        # Fire type specific attributes
-        self.beam_targets = {}      # For Beam: enemy_id: (damage_per_frame, frames_applied)
-        self.track_direction = 0    # For Track: 0=N, 1=E, 2=S, 3=W
-        
-        # Egrem spawning state (only set for Egrem towers)
-        self.egrem_source_types = []  # List of base_type strings that created this egrem
-        self.egrem_spawn_timer = 0    # Frames until next spawn
-        self.egrem_spawn_interval = 0 # Interval between spawns
-        
-        self._calculate_stats()
 
-    def get_traits(self):
-        return list(TOWER_TRAITS.get(self.base_type, []))
 
-    def get_effective_traits(self):
-        traits = set(self.get_traits())
-        for uid in self.upgrades:
-            for t in UPGRADE_DEFS.get(uid, {}).get("traits", []):
-                if t != "wildcard":
-                    traits.add(t)
-        return traits
 
-    def _calculate_stats(self):
-        base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Neural Processor"])
-        merge_level = self.merge_generation  # Use merge_generation for tier-based calculation
-        boost = 1.0 + merge_level * 0.3
 
-        self.dmg = int(base["dmg"] * boost)
-        self.range = base["range"] + merge_level
-        self.fire_rate = max(1, int(base["fire_rate"] / boost) or 1)
 
-        # Apply upgrades
-        for uid in self.upgrades:
-            u = UPGRADE_DEFS.get(uid, {})
-            self.dmg = max(1, int(self.dmg * (1 + u.get("dmg_mult", 0))))
-            self.range = max(1, self.range + u.get("range_bonus", 0))
-            self.fire_rate = max(1, int(self.fire_rate * (1 + u.get("fire_rate_mult", 0))))
 
-        # Synergy bonus: +10% effect if upgrade synergizes with base trait
-        for uid in self.upgrades:
-            u = UPGRADE_DEFS.get(uid, {})
-            if any(s in self.get_traits() for s in u.get("synergizes_with", [])):
-                self.dmg = int(self.dmg * 1.10)
-                self.range += 0.2   # small bonus
-                # could add more here
 
-    def get_merge_tier(self):
-        return self.merge_generation
 
-    @staticmethod
-    def merge_towers(tower1, tower2):
-        new_tower = Tower(0, 0, tower_type=tower1.base_type)
-        new_tower.merge_generation = tower1.merge_generation + 1  # Increment tier
-        new_tower.parents = tower1.parents + tower2.parents + [tower1.base_type, tower2.base_type]
-        new_tower.gold_invested = tower1.gold_invested + tower2.gold_invested
-        new_tower.upgrades = list(set(tower1.upgrades + tower2.upgrades))  # combine unique upgrades
-        new_tower._calculate_stats()
-        return new_tower
 
-    def _configure_egrem_spawning(self):
-        """Configure egrem spawning based on source tower types."""
-        if not self.egrem_source_types or len(self.egrem_source_types) < 2:
-            return
-        
-        # Average spawn parameters from both source towers
-        total_spawn_count = 0
-        total_spawn_interval = 0
-        enemy_types = []
-        
-        for tower_type in self.egrem_source_types:
-            config = EGREM_SPAWN_CONFIG.get(tower_type, {})
-            total_spawn_count += config.get("base_spawn", 1)
-            total_spawn_interval += config.get("spawn_interval", 90)
-            enemy_types.append(config.get("enemy_type", "Drone"))
-        
-        # Average the values
-        self.egrem_spawn_count = max(1, total_spawn_count // 2)
-        self.egrem_spawn_interval = max(30, total_spawn_interval // 2)
-        self.egrem_enemy_types = enemy_types  # Can spawn mixed types
-        self.egrem_spawn_timer = 0  # Spawn immediately on first frame of wave
 
-    def update(self, enemies, current_frame, game):
-        if 'stun' in self.status_effects and self.status_effects['stun'] > 0:
-            self.status_effects['stun'] -= 1
-            return None
 
-        if self.cooldown > 0:
-            self.cooldown -= 1
-            return None
 
-        # Heat buildup (from shooting)
-        self.heat += 0.8  # base per shot; tune later
-        if self.heat >= self.max_heat:
-            self.cooldown += 12  # overheat penalty
-            self.heat = self.max_heat
-            # could add visual red glow here
 
-        if self.fire_type == "Spawner":
-            # Egrem towers spawn enemies on timer
-            if hasattr(self, 'egrem_spawn_interval') and self.egrem_spawn_interval > 0:
-                self.egrem_spawn_timer -= 1
-                if self.egrem_spawn_timer <= 0:
-                    self.egrem_spawn_timer = self.egrem_spawn_interval
-                    for _ in range(self.egrem_spawn_count):
-                        enemy_type = random.choice(self.egrem_enemy_types)
-                        game.spawn_enemy_at_position(enemy_type, self.x, self.y, game.round_num)
-            return None  # Spawner towers don't attack
-
-        elif self.fire_type == "Radius":
-            # Damage all enemies in range each frame
-            killed_any = False
-            for dy in range(-int(self.range), int(self.range) + 1):
-                for dx in range(-int(self.range), int(self.range) + 1):
-                    if abs(dx) + abs(dy) > self.range:
-                        continue
-                    nx, ny = self.x + dx, self.y + dy
-                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                        for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
-                            if e.alive and not e.leaked:
-                                killed = e.take_damage(self.dmg)
-                                if killed:
-                                    killed_any = True
-            return (None, killed_any) if killed_any else None
-
-        elif self.fire_type == "Track":
-            # Damage enemies on path segments in the selected direction
-            killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
-            dx, dy = directions[self.track_direction]
-            # Find path segments adjacent to tower in that direction
-            adjacent_x = self.x + dx
-            adjacent_y = self.y + dy
-            if 0 <= adjacent_x < len(game.enemy_grid[0]) and 0 <= adjacent_y < len(game.enemy_grid):
-                for e in game.enemy_grid[adjacent_y][adjacent_x][:]:
-                    if e.alive and not e.leaked:
-                        killed = e.take_damage(self.dmg)
-                        if killed:
-                            killed_any = True
-            self.cooldown = self.fire_rate
-            return (None, killed_any) if killed_any else None
-
-        elif self.fire_type == "DirectionalBeam":
-            # Shoot a beam in one direction, hitting all tiles in that line
-            killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
-            dx, dy = directions[self.track_direction]
-            for dist in range(1, self.range + 1):
-                nx = self.x + dx * dist
-                ny = self.y + dy * dist
-                if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                    for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
-                        if e.alive and not e.leaked:
-                            killed = e.take_damage(self.dmg)
-                            if killed:
-                                killed_any = True
-            self.cooldown = self.fire_rate
-            return (None, killed_any) if killed_any else None
-
-        elif self.fire_type == "Beam":
-            # Find target, damage increases over time on same target
-            target = None
-            best_dist = float('inf')
-            enemy_count = 0
-            max_enemies = 10
-            for dy in range(-int(self.range), int(self.range) + 1):
-                for dx in range(-int(self.range), int(self.range) + 1):
-                    if abs(dx) + abs(dy) > self.range:
-                        continue
-                    nx, ny = self.x + dx, self.y + dy
-                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                        for e in game.enemy_grid[ny][nx]:
-                            if enemy_count >= max_enemies:
-                                break
-                            if e.alive and not e.leaked:
-                                enemy_count += 1
-                                dist = abs(dx) + abs(dy)
-                                if dist < best_dist:
-                                    best_dist = dist
-                                    target = e
-                if enemy_count >= max_enemies:
-                    break
-
-            if target:
-                enemy_id = id(target)
-                if enemy_id in self.beam_targets:
-                    dmg_mult, frames = self.beam_targets[enemy_id]
-                    dmg_mult += 0.5  # increase damage over time
-                    frames += 1
-                else:
-                    dmg_mult = 1.0
-                    frames = 1
-                actual_dmg = int(self.dmg * dmg_mult)
-                killed = target.take_damage(actual_dmg)
-                self.beam_targets[enemy_id] = (dmg_mult, frames)
-                self.cooldown = self.fire_rate
-                self.last_shot_target = target.get_position()
-                self.last_shot_frame = current_frame
-                return (target, killed)
-            else:
-                # Clear beam targets if no target
-                self.beam_targets.clear()
-            return None
-
-        else:  # Ball or Overwatch (default)
-            # Standard projectile targeting - optimized using enemy grid
-            target = None
-            best_dist = float('inf')
-            enemy_count = 0
-            max_enemies = 10
-            effective_range = 99 if self.fire_type == "Overwatch" else self.range
-
-            # Iterate over diamond-shaped area within range using grid
-            for dy in range(-int(effective_range), int(effective_range) + 1):
-                for dx in range(-int(effective_range), int(effective_range) + 1):
-                    if abs(dx) + abs(dy) > effective_range:
-                        continue
-                    nx, ny = self.x + dx, self.y + dy
-                    if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                        for e in game.enemy_grid[ny][nx]:
-                            if enemy_count >= max_enemies:
-                                break
-                            if e.alive and not e.leaked:
-                                enemy_count += 1
-                                dist = abs(dx) + abs(dy)
-                                if dist < best_dist:
-                                    best_dist = dist
-                                    target = e
-                if enemy_count >= max_enemies:
-                    break
-
-            if target:
-                killed = target.take_damage(self.dmg)
-                self.cooldown = self.fire_rate
-                self.last_shot_target = target.get_position()
-                self.last_shot_frame = current_frame
-                return (target, killed)
-            return None
 
 # ==============================
 # GAME
@@ -468,6 +71,7 @@ class Game:
         self.height = height + 2 * self.border_size
         self.width = width + 2 * self.border_size
         self.grid = [["." for _ in range(self.width)] for _ in range(self.height)]
+        self.path_graph = PathGraph()
         self.path_gen = PathGenerator(self.core_height, self.core_width)
         self.regenerate_map(min_path_len)
         self.enemies = []
@@ -519,7 +123,31 @@ class Game:
                 loops += 1
             if len(self.path_gen.path) >= min_len:
                 break
-        self.path = self.path_gen.path
+
+        # Build PathGraph from generated path
+        self.path_graph = PathGraph()
+        # Offset path coordinates to full grid space (account for borders)
+        path_coords = [(x + self.border_size, y + self.border_size) for x, y in self.path_gen.path]
+
+        # Set start and end
+        if path_coords:
+            self.path_graph.set_start(path_coords[0])
+            self.path_graph.set_end(path_coords[-1])
+
+            # Add all nodes and edges
+            for pos in path_coords:
+                self.path_graph.add_node(pos)
+
+            for i in range(len(path_coords) - 1):
+                self.path_graph.add_edge(path_coords[i], path_coords[i+1])
+
+        # Mark initial path cells on the grid
+        for x, y in path_coords:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self.grid[y][x] = 'P'  # Mark as path cell
+
+        # Keep backward compatibility - compute ordered path
+        self.path = self.path_graph.get_ordered_path()
 
     def generate_shop(self):
         for i in range(5):
@@ -949,17 +577,6 @@ class Game:
         return cells
 
     @staticmethod
-    def _get_path_segments(cell_list):
-        """Return a set of frozensets representing adjacency segments between consecutive path cells."""
-        segments = set()
-        cell_set = set(cell_list)
-        for (x, y) in cell_list:
-            for nx, ny in [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]:
-                if (nx, ny) in cell_set:
-                    segments.add(frozenset([(x, y), (nx, ny)]))
-        return segments
-
-    @staticmethod
     def _get_endpoints(cell_list):
         """Return cells that have exactly 1 neighbour within the cell list (path endpoints)."""
         cell_set = set(cell_list)
@@ -970,127 +587,176 @@ class Game:
                 endpoints.append((x, y))
         return endpoints
 
-    def _get_map_path_segments(self):
-        """Return the set of frozenset segments from the current map path."""
-        segments = set()
-        for i in range(len(self.path) - 1):
-            segments.add(frozenset([self.path[i], self.path[i+1]]))
-        return segments
-
-    def _get_map_path_endpoints(self):
-        """Return set of map path endpoints (start, end, and any dead-ends with exactly 1 neighbor)."""
-        if not self.path:
-            return set()
-        path_set = set(self.path)
-        endpoints = set()
-        for cell in self.path:
-            neighbors_in_path = sum(1 for nx, ny in [(cell[0]+1, cell[1]), (cell[0]-1, cell[1]), (cell[0], cell[1]+1), (cell[0], cell[1]-1)] if (nx, ny) in path_set)
-            if neighbors_in_path <= 1:
-                endpoints.add(cell)
-        return endpoints
-
     def can_place_tile(self, tile_data, gx, gy, rotation):
         """Check if a tile can be placed at the given grid position with rotation.
 
         Rules:
           1. Tile must fit within grid bounds.
           2. No tile cell may overlap an existing tower or path cell.
-          3. At least one tile path endpoint must be adjacent to the map path
-             start (game.path[0]) or end (game.path[-1]).
-          4. No tile path segment may duplicate an existing map path segment.
+          3. At least one tile path endpoint must be adjacent to the map path end.
         """
+        # #region agent log
+        def debug_log(msg, data=None):
+            log_entry = {
+                "sessionId": "03f8e0",
+                "runId": "tile_placement_debug",
+                "hypothesisId": "H1_visual_blocking_H2_no_valid_tiles",
+                "location": "can_place_tile",
+                "message": msg,
+                "data": data or {},
+                "timestamp": 0  # Will be set by logging system
+            }
+            with open("debug-03f8e0.log", "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        # #endregion
+
+        debug_log("can_place_tile called", {
+            "tile": tile_data["name"],
+            "position": (gx, gy),
+            "rotation": rotation,
+            "path_length": len(self.path),
+            "path_end": self.path[-1] if self.path else None
+        })
+
         rotated = self._rotate_grid(tile_data["path_grid"], rotation)
         tile_h = len(rotated)
         tile_w = len(rotated[0]) if rotated else 0
 
         # Rule 1 – bounds
-        if gx < 0 or gy < 0 or gx + tile_w > self.width or gy + tile_h > self.height:
+        bounds_ok = not (gx < 0 or gy < 0 or gx + tile_w > self.width or gy + tile_h > self.height)
+        debug_log("bounds check", {"bounds_ok": bounds_ok, "gx": gx, "gy": gy, "tile_w": tile_w, "tile_h": tile_h, "grid_size": (self.width, self.height)})
+        if not bounds_ok:
             return False
 
         # Rule 2 – no overlap with towers or existing path
+        overlap_found = False
         for dy in range(tile_h):
             for dx in range(tile_w):
                 cell = self.grid[gy + dy][gx + dx]
                 if cell != '.':
-                    return False
+                    overlap_found = True
+                    break
+            if overlap_found:
+                break
+
+        debug_log("overlap check", {"overlap_found": overlap_found, "tile_area": [(gx+dx, gy+dy) for dy in range(tile_h) for dx in range(tile_w)]})
+        if overlap_found:
+            return False
 
         tile_cells = self._get_tile_path_cells(tile_data, gx, gy, rotation)
+        debug_log("tile cells", {"tile_cells": tile_cells})
         if not tile_cells:
             return False
 
-        # Rule 3 – at least one tile endpoint must be adjacent to the path end (only global end, no mid-path)
+        # Rule 3 – at least one tile endpoint must be adjacent to the path end
         tile_endpoints = self._get_endpoints(tile_cells)
         map_end = self.path[-1] if self.path else None
+
+        debug_log("adjacency check", {
+            "tile_endpoints": tile_endpoints,
+            "map_end": map_end,
+            "tile_cells": tile_cells
+        })
 
         def adjacent(a, b):
             return abs(a[0]-b[0]) + abs(a[1]-b[1]) == 1
 
         connects = map_end and any(adjacent(te, map_end) for te in tile_endpoints)
+        debug_log("connection result", {"connects": connects})
+
         if not connects:
-            print(f"Placement fail: Not adjacent to path end {map_end}")  # Debug for green preview issue
             return False
 
-        # Rule 4 – no tile segment duplicates an existing map segment
-        map_segs = self._get_map_path_segments()
-        tile_segs = self._get_path_segments(tile_cells)
-        if map_segs & tile_segs:
-            print(f"Placement fail: Segment overlap")
-            return False
-
+        debug_log("placement VALID")
         return True
 
     def place_map_tile(self, tile_data, gx, gy, rotation):
         """Place a map tile at the given position, extending the map and path.
 
         The new path cells are inserted at the correct end of game.path so that
-        the path remains a continuous ordered sequence.
+        the path remains a continuous ordered sequence. Updates path_graph.end
+        so enemies and directional rendering follow the extended path.
         """
+        tile_placement_log("place_map_tile_START", {"gx": gx, "gy": gy, "rotation": rotation, "tile": tile_data["name"]})
         rotated = self._rotate_grid(tile_data["path_grid"], rotation)
         tile_h = len(rotated)
         tile_w = len(rotated[0]) if rotated else 0
 
         tile_cells = self._get_tile_path_cells(tile_data, gx, gy, rotation)
+        tile_cell_set = set(tile_cells)
         tile_endpoints = self._get_endpoints(tile_cells)
+        tile_placement_log("place_map_tile_tile_cells", {"tile_cells": list(tile_cells), "tile_endpoints": tile_endpoints})
 
         def adjacent(a, b):
             return abs(a[0]-b[0]) + abs(a[1]-b[1]) == 1
 
-        # Only append to the path end (no prepending to start)
-        append_to_end = True
-        connector_tile_ep = None
-
         map_end = self.path[-1] if self.path else None
-        if map_end:
-            for te in tile_endpoints:
-                if adjacent(te, map_end):
-                    connector_tile_ep = te
+        # Find entry (tile cell adjacent to path end) and exit (where path extends)
+        entry = None
+        exit_cell = None
+        for ep in tile_endpoints:
+            if map_end and adjacent(ep, map_end):
+                entry = ep
+                break
+        if entry is None and map_end:
+            # No endpoints (e.g. loop); find any tile cell adjacent to path end
+            for c in tile_cells:
+                if adjacent(c, map_end):
+                    entry = c
                     break
+        for ep in tile_endpoints:
+            if ep != entry:
+                exit_cell = ep
+                break
+        if exit_cell is None and entry is not None and len(tile_cells) > 1:
+            # Loop or single-endpoint: exit is tile cell farthest from map_end (excluding entry)
+            others = [c for c in tile_cells if c != entry]
+            exit_cell = max(others, key=lambda c: abs(c[0]-map_end[0]) + abs(c[1]-map_end[1])) if map_end and others else (others[0] if others else entry)
 
-        # Build an ordered list of new path cells starting from the connector endpoint.
-        # BFS/walk through the tile's path cells.
-        if connector_tile_ep and tile_cells:
-            ordered = []
-            remaining = set(tile_cells)
-            current = connector_tile_ep
-            while current in remaining:
-                ordered.append(current)
-                remaining.remove(current)
-                next_cells = [
-                    (nx, ny) for nx, ny in
-                    [(current[0]+1, current[1]), (current[0]-1, current[1]),
-                     (current[0], current[1]+1), (current[0], current[1]-1)]
-                    if (nx, ny) in remaining
-                ]
-                if not next_cells:
-                    break
-                current = next_cells[0]
-            # Add any remaining cells (shouldn't happen for simple paths)
-            ordered.extend(remaining)
+        # Order tile cells from entry to exit via BFS within the tile
+        from collections import deque
+        ordered = []
+        if entry is not None:
+            queue = deque([entry])
+            visited = {entry}
+            came_from = {entry: None}
+            while queue:
+                cur = queue.popleft()
+                for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
+                    nb = (cur[0]+dx, cur[1]+dy)
+                    if nb in tile_cell_set and nb not in visited:
+                        visited.add(nb)
+                        came_from[nb] = cur
+                        queue.append(nb)
+            if exit_cell and exit_cell in came_from:
+                cur = exit_cell
+                while cur is not None:
+                    ordered.append(cur)
+                    cur = came_from[cur]
+                ordered.reverse()
+            else:
+                ordered = list(tile_cells)
         else:
             ordered = list(tile_cells)
 
-        # Always append to the end
-        self.path.extend(ordered)
+        tile_placement_log("place_map_tile_ordered", {"ordered": ordered, "path_end": map_end, "new_end": exit_cell})
+
+        # Update PathGraph with new tiles
+        for pos in ordered:
+            self.path_graph.add_node(pos)
+        for i in range(len(ordered) - 1):
+            self.path_graph.add_edge(ordered[i], ordered[i+1])
+        if ordered and self.path:
+            self.path_graph.add_edge(self.path[-1], ordered[0])
+
+        # Update path end so BFS computes the full extended path
+        new_end = ordered[-1] if ordered else (exit_cell or map_end)
+        if new_end is not None:
+            self.path_graph.set_end(new_end)
+
+        # Recompute ordered path (start to new end)
+        self.path = self.path_graph.get_ordered_path()
+        tile_placement_log("place_map_tile_path_updated", {"new_path_length": len(self.path), "new_end": new_end})
 
         # Mark grid cells
         for dy in range(tile_h):
@@ -1099,9 +765,7 @@ class Game:
                     self.grid[gy + dy][gx + dx] = 'P'  # path
                 else:
                     self.grid[gy + dy][gx + dx] = 'X'  # expanded non-path
-
-        print(f"Placed {tile_data['name']} at ({gx},{gy}) rot={rotation*90}°, "
-              f"added {len(ordered)} path cells, {'appended' if append_to_end else 'prepended'}")
+        tile_placement_log("place_map_tile_DONE")
 
     def spawn_enemy_at_position(self, enemy_type, x, y, wave_num=1):
         """Spawn an enemy at a specific grid position (for egrem towers)."""
@@ -1169,6 +833,22 @@ grid_y = SHOP_H + BENCH_H
 map_bench_x = 15
 map_bench_y = HEIGHT - 100
 
+# Tile placement debug logging
+def tile_placement_log(step, data=None):
+    try:
+        with open("tile_placement_debug.log", "a") as f:
+            import time
+            entry = {"step": step, "data": data or {}, "time": time.time()}
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+# Clear log at startup for fresh debug run
+try:
+    open("tile_placement_debug.log", "w").close()
+except Exception:
+    pass
+
 running = True
 while running:
     frame += 1
@@ -1176,15 +856,20 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                if game.selected_map_tile is not None:
-                    game.selected_tile_rotation = (game.selected_tile_rotation - 1) % 4
-            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                if game.selected_map_tile is not None:
-                    game.selected_tile_rotation = (game.selected_tile_rotation + 1) % 4
+            pass  # Rotation now handled by right-click
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
-            if event.button == 1:
+            tile_placement_log("MOUSEBUTTONDOWN", {
+                "button": event.button, "mx": mx, "my": my,
+                "grid_y": grid_y, "map_bench_y": map_bench_y, "GRID_W": GRID_W,
+                "selected_map_tile": game.selected_map_tile,
+                "in_grid_region": my >= grid_y and mx < GRID_W,
+                "in_map_bench_region": my >= map_bench_y and my < map_bench_y + 80
+            })
+            if event.button == 3:  # Right click - rotate selected tile
+                if game.selected_map_tile is not None:
+                    game.selected_tile_rotation = (game.selected_tile_rotation + 1) % 4
+            elif event.button == 1:
                 # Upgrade dialog (when open) — check first so dialog clicks in right panel are handled
                 if game.upgrade_dialog_tower is not None:
                     t = game.upgrade_dialog_tower
@@ -1298,6 +983,7 @@ while running:
                             game.cancel_merge()
                 # Map Tile Bench
                 elif my >= map_bench_y and my < map_bench_y + 80:
+                    tile_placement_log("MAP_BENCH_BRANCH", {"reason": "my in map_bench_y range", "mx": mx, "my": my})
                     for i in range(3):  # Updated for larger bench
                         x = map_bench_x + i * 80
                         y = map_bench_y
@@ -1306,47 +992,56 @@ while running:
                                 game.selected_map_tile = i
                                 game.selected_tile_rotation = 0
                                 break
-                                    # Rotate buttons (left: counterclockwise, right: clockwise)
-                if game.selected_map_tile is not None:
-                    rot_x = map_bench_x + 3*80 + 10  # Adjusted for 3 slots
-                    rot_y = map_bench_y + 5
+                # Rotate buttons: only handle when click is actually on the rotate button region
+                rot_x = map_bench_x + 3*80 + 10
+                rot_y = map_bench_y + 5
+                in_rotate_region = rot_y <= my <= rot_y + 26 and (rot_x <= mx <= rot_x + 26 or rot_x + 34 <= mx <= rot_x + 60)
+                if game.selected_map_tile is not None and in_rotate_region:
                     # Left rotate button (<)
-                    if rot_x <= mx <= rot_x + 26 and rot_y <= my <= rot_y + 26:
+                    if rot_x <= mx <= rot_x + 26:
                         game.selected_tile_rotation = (game.selected_tile_rotation - 1) % 4
                     # Right rotate button (>)
-                    elif rot_x + 34 <= mx <= rot_x + 60 and rot_y <= my <= rot_y + 26:
+                    elif rot_x + 34 <= mx <= rot_x + 60:
                         game.selected_tile_rotation = (game.selected_tile_rotation + 1) % 4
+                # Map tile bench and shop toggle (checked before grid to prevent overlap issues)
+                elif my >= map_bench_y and my < map_bench_y + 80 and mx < GRID_W:
+                    tx = map_bench_x + 3*80 + 20
+                    ty = map_bench_y
+                    if tx <= mx <= tx+35 and ty <= my <= ty+35:
+                        game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
+                        game.shop = [None] * 5  # Clear shop when switching modes
+                        game.generate_shop()
+                    # Map tile bench selection
+                    for i in range(3):  # Updated for larger bench
+                        x = map_bench_x + i * 80
+                        y = map_bench_y
+                        if x <= mx <= x+70 and y <= my <= y+80:
+                            if game.map_tile_bench[i] is not None:
+                                game.selected_map_tile = i
+                                game.selected_tile_rotation = 0
+                                break
                 # Grid: place from bench, place map tile, select enemy, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
-                    # Check for shop mode toggle click (at map bench position)
-                    if my >= map_bench_y and my < map_bench_y + 80:
-                        tx = map_bench_x + 3*80 + 20
-                        ty = map_bench_y
-                        if tx <= mx <= tx+35 and ty <= my <= ty+35:
-                            game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
-                            game.shop = [None] * 5  # Clear shop when switching modes
-                            game.generate_shop()
-                        # Map tile bench selection
-                        for i in range(3):  # Updated for larger bench
-                            x = map_bench_x + i * 80
-                            y = map_bench_y
-                            if x <= mx <= x+70 and y <= my <= y+80:
-                                if game.map_tile_bench[i] is not None:
-                                    game.selected_map_tile = i
-                                    game.selected_tile_rotation = 0
-                                    break
-                    else:
                         gx = mx // TILE
                         gy = (my - grid_y) // TILE
+                        tile_placement_log("GRID_CLICK", {"gx": gx, "gy": gy, "selected_map_tile": game.selected_map_tile})
                         if game.selected_map_tile is not None:
                             # Place map tile to expand grid
                             tile_data = game.map_tile_bench[game.selected_map_tile]
-                            if tile_data and game.can_place_tile(tile_data, gx, gy, game.selected_tile_rotation):
+                            tile_placement_log("BEFORE_CAN_PLACE", {
+                                "tile_data": tile_data["name"] if tile_data else None,
+                                "gx": gx, "gy": gy, "rotation": game.selected_tile_rotation
+                            })
+                            can_place = tile_data and game.can_place_tile(tile_data, gx, gy, game.selected_tile_rotation)
+                            tile_placement_log("AFTER_CAN_PLACE", {"can_place": can_place})
+                            if tile_data and can_place:
+                                tile_placement_log("CALLING_PLACE_MAP_TILE", {"gx": gx, "gy": gy})
                                 game.place_map_tile(tile_data, gx, gy, game.selected_tile_rotation)
                                 # Remove tile from bench after placement
                                 game.map_tile_bench[game.selected_map_tile] = None
                                 game.selected_map_tile = None
                                 game.selected_tile_rotation = 0
+                                tile_placement_log("PLACEMENT_COMPLETE")
                         elif game.selected_tower is not None and game.merge_preview is None and not game.egrem_preview:
                             game.place_tower(gx, gy, bench_idx=game.selected_tower)
                         else:
@@ -1685,12 +1380,78 @@ while running:
     for y in range(game.height+1):
         pygame.draw.line(screen, GRID, (0, grid_y + y*TILE), (GRID_W, grid_y + y*TILE), 1)
 
+    # Render grid cells based on content
+    for y in range(game.height):
+        for x in range(game.width):
+            cell_content = game.grid[y][x]
+            if cell_content == 'P':  # Path cell - render directional path
+                # First render a subtle background
+                cell_rect = pygame.Rect(x*TILE + 1, grid_y + y*TILE + 1, TILE - 2, TILE - 2)
+                pygame.draw.rect(screen, (120, 80, 40), cell_rect)  # Light brown background
+
+                # Find this cell's position in the path
+                cell_pos = (x, y)
+                path_index = None
+                for i, path_pos in enumerate(game.path):
+                    if path_pos == cell_pos:
+                        path_index = i
+                        break
+
+                if path_index is not None:
+                    # Get previous and next positions in path
+                    prev_pos = game.path[path_index - 1] if path_index > 0 else None
+                    next_pos = game.path[path_index + 1] if path_index < len(game.path) - 1 else None
+
+                    # Calculate directions
+                    center_x = x * TILE + TILE // 2
+                    center_y = grid_y + y * TILE + TILE // 2
+                    path_width = 8  # Width of path line
+
+                    # Draw path segments
+                    if prev_pos:
+                        # Calculate direction from current to previous
+                        dx = prev_pos[0] - cell_pos[0]
+                        dy = prev_pos[1] - cell_pos[1]
+                        if dx > 0:  # Previous is right
+                            start_x, start_y = center_x + TILE // 2, center_y
+                        elif dx < 0:  # Previous is left
+                            start_x, start_y = center_x - TILE // 2, center_y
+                        elif dy > 0:  # Previous is down
+                            start_x, start_y = center_x, center_y + TILE // 2
+                        elif dy < 0:  # Previous is up
+                            start_x, start_y = center_x, center_y - TILE // 2
+                        else:
+                            start_x, start_y = center_x, center_y
+                        pygame.draw.line(screen, (160, 82, 45), (center_x, center_y), (start_x, start_y), path_width)
+
+                    if next_pos:
+                        # Calculate direction from current to next
+                        dx = next_pos[0] - cell_pos[0]
+                        dy = next_pos[1] - cell_pos[1]
+                        if dx > 0:  # Next is right
+                            end_x, end_y = center_x + TILE // 2, center_y
+                        elif dx < 0:  # Next is left
+                            end_x, end_y = center_x - TILE // 2, center_y
+                        elif dy > 0:  # Next is down
+                            end_x, end_y = center_x, center_y + TILE // 2
+                        elif dy < 0:  # Next is up
+                            end_x, end_y = center_x, center_y - TILE // 2
+                        else:
+                            end_x, end_y = center_x, center_y
+                        pygame.draw.line(screen, (160, 82, 45), (center_x, center_y), (end_x, end_y), path_width)
+
+            elif cell_content == 'X':  # Expanded non-path
+                         cell_rect = pygame.Rect(x*TILE + 1, grid_y + y*TILE + 1, TILE - 2, TILE - 2)
+                         pygame.draw.rect(screen, (128, 128, 128), cell_rect)
+
+    # Draw subtle connecting lines between path cells (now that we have directional rendering)
     for i in range(len(game.path)-1):
         x1,y1 = game.path[i]
         x2,y2 = game.path[i+1]
-        pygame.draw.line(screen, PATH,
+        pygame.draw.line(screen, (120, 60, 30),  # Darker brown for subtle connection
                          (x1*TILE +20, grid_y + y1*TILE +20),
-                         (x2*TILE +20, grid_y + y2*TILE +20), 12)
+                         (x2*TILE +20, grid_y + y2*TILE +20), 6)
+
 
     # Range preview
     mx,my = pygame.mouse.get_pos()

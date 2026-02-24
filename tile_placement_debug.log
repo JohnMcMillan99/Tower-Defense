@@ -1,0 +1,249 @@
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 434, "my": 86, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961374.2793581}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 301, "my": 747, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961375.4239242}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 301, "my": 747}, "time": 1771961375.4239242}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 302, "my": 72, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961376.65263}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 376, "my": 63, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961377.5393581}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 295, "my": 752, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961379.264093}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 295, "my": 752}, "time": 1771961379.264093}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 57, "my": 62, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961380.3065212}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 113, "my": 69, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961380.518219}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 211, "my": 68, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961380.7994373}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 291, "my": 61, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961381.0457022}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 375, "my": 74, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961381.5690525}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 186, "my": 191, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961382.3133824}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 114, "my": 185, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961383.0371027}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 162, "my": 196, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961383.8093228}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 48, "my": 192, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961384.3900404}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 241, "my": 195, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961384.9671936}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 157, "my": 196, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961385.6811886}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 312, "my": 185, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961386.804701}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 127, "my": 205, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961387.4458077}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 214, "my": 200, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961388.1868584}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 106, "my": 185, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961389.3522635}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 171, "my": 513, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961391.0722544}
+{"step": "GRID_CLICK", "data": {"gx": 4, "gy": 6, "selected_map_tile": null}, "time": 1771961391.0732527}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 42, "my": 183, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961391.951561}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 349, "my": 479, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961392.837823}
+{"step": "GRID_CLICK", "data": {"gx": 8, "gy": 5, "selected_map_tile": null}, "time": 1771961392.837823}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 112, "my": 755, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961396.2189631}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 112, "my": 755}, "time": 1771961396.220075}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 571, "my": 536, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961397.3301964}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 6, "selected_map_tile": 1}, "time": 1771961397.3301964}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Right Turn", "gx": 14, "gy": 6, "rotation": 0}, "time": 1771961397.3311968}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961397.3331978}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 14, "gy": 6}, "time": 1771961397.3331978}
+{"step": "place_map_tile_START", "data": {"gx": 14, "gy": 6, "rotation": 0, "tile": "Right Turn"}, "time": 1771961397.3331978}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[15, 6], [14, 7], [15, 7]], "tile_endpoints": [[15, 6], [14, 7]]}, "time": 1771961397.3331978}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[14, 7], [15, 7], [15, 6]], "path_end": [13, 7], "new_end": [15, 6]}, "time": 1771961397.3331978}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 25, "new_end": [15, 6]}, "time": 1771961397.3341968}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961397.3341968}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961397.3341968}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 68, "my": 762, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961398.9951625}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 68, "my": 762}, "time": 1771961398.9951625}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 608, "my": 457, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961400.987519}
+{"step": "GRID_CLICK", "data": {"gx": 15, "gy": 4, "selected_map_tile": 0}, "time": 1771961400.987519}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Right Turn", "gx": 15, "gy": 4, "rotation": 0}, "time": 1771961400.987519}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961400.9900358}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 15, "gy": 4}, "time": 1771961400.9900358}
+{"step": "place_map_tile_START", "data": {"gx": 15, "gy": 4, "rotation": 0, "tile": "Right Turn"}, "time": 1771961400.9900358}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[16, 4], [15, 5], [16, 5]], "tile_endpoints": [[16, 4], [15, 5]]}, "time": 1771961400.991032}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[15, 5], [16, 5], [16, 4]], "path_end": [15, 6], "new_end": [16, 4]}, "time": 1771961400.991032}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 28, "new_end": [16, 4]}, "time": 1771961400.991032}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961400.9920273}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961400.9920273}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 804, "my": 348, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961402.0568786}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 619, "my": 457, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961402.818009}
+{"step": "GRID_CLICK", "data": {"gx": 15, "gy": 4, "selected_map_tile": null}, "time": 1771961402.818009}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 579, "my": 533, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961403.42904}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 6, "selected_map_tile": null}, "time": 1771961403.42904}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 621, "my": 460, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961404.043262}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 574, "my": 524, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961404.6443903}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 6, "selected_map_tile": null}, "time": 1771961404.6453917}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 804, "my": 143, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961418.1350577}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 188, "my": 517, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961428.9230416}
+{"step": "GRID_CLICK", "data": {"gx": 4, "gy": 6, "selected_map_tile": null}, "time": 1771961428.9230416}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 550, "my": 338, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961429.859352}
+{"step": "GRID_CLICK", "data": {"gx": 13, "gy": 1, "selected_map_tile": null}, "time": 1771961429.859352}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 517, "my": 359, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961434.4749703}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 517, "my": 361, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961434.684828}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 517, "my": 361, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961434.7690198}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 517, "my": 362, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961434.8689609}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 4, "mx": 607, "my": 800, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.3301778}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 4, "mx": 607, "my": 800, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.3643034}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 4, "mx": 607, "my": 800, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.3979552}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 4, "mx": 607, "my": 799, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.431203}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 4, "mx": 607, "my": 799, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.481338}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 604, "my": 775, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.6453824}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 599, "my": 767, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.6774569}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 595, "my": 765, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.710519}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 595, "my": 763, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.742539}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 5, "mx": 594, "my": 753, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961435.791111}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 289, "my": 739, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961438.4374063}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 289, "my": 739}, "time": 1771961438.4374063}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 380, "my": 80, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961439.834051}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 51, "my": 775, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961440.5594237}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 51, "my": 775}, "time": 1771961440.5594237}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 527, "my": 411, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961443.4201741}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 523, "my": 412, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961443.7989028}
+{"step": "GRID_CLICK", "data": {"gx": 13, "gy": 3, "selected_map_tile": 0}, "time": 1771961443.7989028}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Loop", "gx": 13, "gy": 3, "rotation": 1}, "time": 1771961443.7989028}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": false}, "time": 1771961443.801044}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 651, "my": 510, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961444.4149916}
+{"step": "GRID_CLICK", "data": {"gx": 16, "gy": 6, "selected_map_tile": 0}, "time": 1771961444.4149916}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Loop", "gx": 16, "gy": 6, "rotation": 1}, "time": 1771961444.4159944}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": false}, "time": 1771961444.4169943}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 586, "my": 610, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961444.6490147}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 8, "selected_map_tile": 0}, "time": 1771961444.6490147}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Loop", "gx": 14, "gy": 8, "rotation": 1}, "time": 1771961444.6490147}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": false}, "time": 1771961444.651134}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 642, "my": 449, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961445.397349}
+{"step": "GRID_CLICK", "data": {"gx": 16, "gy": 4, "selected_map_tile": 0}, "time": 1771961445.397349}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Loop", "gx": 16, "gy": 4, "rotation": 1}, "time": 1771961445.397349}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": false}, "time": 1771961445.3988516}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 642, "my": 448, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961445.446531}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 24, "my": 767, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961446.5211914}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 24, "my": 767}, "time": 1771961446.5211914}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 143, "my": 76, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961447.3369555}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 139, "my": 778, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 0, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961448.1835032}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 139, "my": 778}, "time": 1771961448.1835032}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 663, "my": 373, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961451.314032}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 663, "my": 373, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961451.5911977}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 663, "my": 373, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961451.8390634}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 631, "my": 373, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961452.6090631}
+{"step": "GRID_CLICK", "data": {"gx": 15, "gy": 2, "selected_map_tile": 1}, "time": 1771961452.6090631}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Right Turn", "gx": 15, "gy": 2, "rotation": 3}, "time": 1771961452.6100671}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961452.6120758}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 15, "gy": 2}, "time": 1771961452.6120758}
+{"step": "place_map_tile_START", "data": {"gx": 15, "gy": 2, "rotation": 3, "tile": "Right Turn"}, "time": 1771961452.61307}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[15, 2], [16, 2], [16, 3]], "tile_endpoints": [[15, 2], [16, 3]]}, "time": 1771961452.61307}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[16, 3], [16, 2], [15, 2]], "path_end": [16, 4], "new_end": [15, 2]}, "time": 1771961452.61307}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 31, "new_end": [15, 2]}, "time": 1771961452.61307}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961452.61307}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961452.614077}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 284, "my": 66, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961453.991343}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 131, "my": 759, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961454.6672194}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 131, "my": 759}, "time": 1771961454.6672194}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 530, "my": 356, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961455.229036}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 542, "my": 368, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961456.096471}
+{"step": "GRID_CLICK", "data": {"gx": 13, "gy": 2, "selected_map_tile": 1}, "time": 1771961456.096471}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Left Turn", "gx": 13, "gy": 2, "rotation": 1}, "time": 1771961456.097475}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961456.1025147}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 13, "gy": 2}, "time": 1771961456.1025147}
+{"step": "place_map_tile_START", "data": {"gx": 13, "gy": 2, "rotation": 1, "tile": "Left Turn"}, "time": 1771961456.1025147}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[13, 2], [14, 2], [13, 3]], "tile_endpoints": [[14, 2], [13, 3]]}, "time": 1771961456.1035147}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[14, 2], [13, 2], [13, 3]], "path_end": [15, 2], "new_end": [13, 3]}, "time": 1771961456.1035147}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 34, "new_end": [13, 3]}, "time": 1771961456.1035147}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961456.1045165}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961456.1045165}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 68, "my": 82, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961457.3130515}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 67, "my": 59, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961458.2757754}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 798, "my": 136, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961459.4563625}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 533, "my": 449, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961478.6700926}
+{"step": "GRID_CLICK", "data": {"gx": 13, "gy": 4, "selected_map_tile": null}, "time": 1771961478.6700926}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 570, "my": 416, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961478.9212327}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 3, "selected_map_tile": null}, "time": 1771961478.9212327}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 583, "my": 482, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961479.1345642}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 5, "selected_map_tile": null}, "time": 1771961479.1345642}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 582, "my": 484, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961479.1509695}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 363, "my": 476, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961479.529331}
+{"step": "GRID_CLICK", "data": {"gx": 9, "gy": 5, "selected_map_tile": null}, "time": 1771961479.529331}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 363, "my": 476, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961479.5451572}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 502, "my": 726, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961480.122942}
+{"step": "GRID_CLICK", "data": {"gx": 12, "gy": 11, "selected_map_tile": null}, "time": 1771961480.1239395}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 502, "my": 726, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961480.1239395}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 295, "my": 749, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961495.9672155}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 295, "my": 749}, "time": 1771961495.9672155}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 375, "my": 68, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961496.864021}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 244, "my": 49, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961497.4543047}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 279, "my": 66, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961497.9913433}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 141, "my": 51, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961498.3523393}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 173, "my": 218, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961498.743721}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 231, "my": 217, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961499.200813}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 200, "my": 198, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961499.8075569}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 98, "my": 198, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961500.605366}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 29, "my": 195, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961500.8970115}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 77, "my": 203, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961501.3099742}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 44, "my": 198, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961501.7228758}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 181, "my": 209, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961502.08804}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 108, "my": 192, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961502.5822601}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 54, "my": 197, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961503.1073742}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 574, "my": 406, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961504.3240407}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 3, "selected_map_tile": null}, "time": 1771961504.3240407}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 580, "my": 459, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961505.295046}
+{"step": "GRID_CLICK", "data": {"gx": 14, "gy": 4, "selected_map_tile": null}, "time": 1771961505.295046}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 793, "my": 135, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961506.853157}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 295, "my": 744, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961513.4178808}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 295, "my": 744}, "time": 1771961513.418883}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 213, "my": 70, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961514.3561447}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 278, "my": 63, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961514.769474}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 369, "my": 61, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961515.6575239}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 227, "my": 757, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961516.3979857}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 227, "my": 757}, "time": 1771961516.3989897}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 493, "my": 459, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 2, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961517.260618}
+{"step": "GRID_CLICK", "data": {"gx": 12, "gy": 4, "selected_map_tile": 2}, "time": 1771961517.260618}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Straight", "gx": 12, "gy": 4, "rotation": 0}, "time": 1771961517.2616234}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961517.2626235}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 12, "gy": 4}, "time": 1771961517.2626235}
+{"step": "place_map_tile_START", "data": {"gx": 12, "gy": 4, "rotation": 0, "tile": "Straight"}, "time": 1771961517.2636235}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[12, 4], [13, 4]], "tile_endpoints": [[12, 4], [13, 4]]}, "time": 1771961517.2636235}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[13, 4], [12, 4]], "path_end": [13, 3], "new_end": [12, 4]}, "time": 1771961517.264128}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 36, "new_end": [12, 4]}, "time": 1771961517.264128}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961517.264128}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961517.264128}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 136, "my": 758, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961518.0951836}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 136, "my": 758}, "time": 1771961518.0961807}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 410, "my": 448, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961519.1469862}
+{"step": "GRID_CLICK", "data": {"gx": 10, "gy": 4, "selected_map_tile": 1}, "time": 1771961519.1469862}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Straight", "gx": 10, "gy": 4, "rotation": 0}, "time": 1771961519.1479933}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961519.1489935}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 10, "gy": 4}, "time": 1771961519.1489935}
+{"step": "place_map_tile_START", "data": {"gx": 10, "gy": 4, "rotation": 0, "tile": "Straight"}, "time": 1771961519.1489935}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[10, 4], [11, 4]], "tile_endpoints": [[10, 4], [11, 4]]}, "time": 1771961519.150155}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[11, 4], [10, 4]], "path_end": [12, 4], "new_end": [10, 4]}, "time": 1771961519.150155}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 38, "new_end": [10, 4]}, "time": 1771961519.150155}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961519.150155}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961519.151155}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 365, "my": 66, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961520.3552039}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 132, "my": 745, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961521.7120912}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 132, "my": 745}, "time": 1771961521.7130928}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 250, "my": 462, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961522.0731595}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 340, "my": 417, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961523.2767406}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 356, "my": 464, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961523.7382956}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 382, "my": 476, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961523.9515257}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 383, "my": 476, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961524.1819968}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 383, "my": 476, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961524.4950335}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 383, "my": 462, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961524.8410323}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 383, "my": 461, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961525.038187}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 383, "my": 461, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961525.3348334}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 381, "my": 453, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961528.1220696}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 381, "my": 453, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961528.5551329}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 376, "my": 382, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961530.3830962}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 391, "my": 382, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961530.6965852}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 393, "my": 382, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961530.9738057}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 415, "my": 388, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961531.7774105}
+{"step": "GRID_CLICK", "data": {"gx": 10, "gy": 2, "selected_map_tile": 1}, "time": 1771961531.7774105}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Right Turn", "gx": 10, "gy": 2, "rotation": 2}, "time": 1771961531.7774105}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961531.7799213}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 10, "gy": 2}, "time": 1771961531.7799213}
+{"step": "place_map_tile_START", "data": {"gx": 10, "gy": 2, "rotation": 2, "tile": "Right Turn"}, "time": 1771961531.7799213}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[10, 2], [11, 2], [10, 3]], "tile_endpoints": [[11, 2], [10, 3]]}, "time": 1771961531.7799213}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[10, 3], [10, 2], [11, 2]], "path_end": [10, 4], "new_end": [11, 2]}, "time": 1771961531.7809224}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 41, "new_end": [11, 2]}, "time": 1771961531.7809224}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961531.7809224}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961531.7819235}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 56, "my": 48, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961534.5854847}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 122, "my": 788, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": true, "in_map_bench_region": true}, "time": 1771961535.633042}
+{"step": "MAP_BENCH_BRANCH", "data": {"reason": "my in map_bench_y range", "mx": 122, "my": 788}, "time": 1771961535.6340406}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 3, "mx": 407, "my": 395, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961535.996458}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 492, "my": 384, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": 1, "in_grid_region": true, "in_map_bench_region": false}, "time": 1771961537.2717643}
+{"step": "GRID_CLICK", "data": {"gx": 12, "gy": 2, "selected_map_tile": 1}, "time": 1771961537.2717643}
+{"step": "BEFORE_CAN_PLACE", "data": {"tile_data": "Straight", "gx": 12, "gy": 2, "rotation": 1}, "time": 1771961537.2717643}
+{"step": "AFTER_CAN_PLACE", "data": {"can_place": true}, "time": 1771961537.2737658}
+{"step": "CALLING_PLACE_MAP_TILE", "data": {"gx": 12, "gy": 2}, "time": 1771961537.2737658}
+{"step": "place_map_tile_START", "data": {"gx": 12, "gy": 2, "rotation": 1, "tile": "Straight"}, "time": 1771961537.2747643}
+{"step": "place_map_tile_tile_cells", "data": {"tile_cells": [[12, 2], [12, 3]], "tile_endpoints": [[12, 2], [12, 3]]}, "time": 1771961537.2747643}
+{"step": "place_map_tile_ordered", "data": {"ordered": [[12, 2], [12, 3]], "path_end": [11, 2], "new_end": [12, 3]}, "time": 1771961537.2747643}
+{"step": "place_map_tile_path_updated", "data": {"new_path_length": 43, "new_end": [12, 3]}, "time": 1771961537.2747643}
+{"step": "place_map_tile_DONE", "data": {}, "time": 1771961537.2747643}
+{"step": "PLACEMENT_COMPLETE", "data": {}, "time": 1771961537.2747643}
+{"step": "MOUSEBUTTONDOWN", "data": {"button": 1, "mx": 798, "my": 139, "grid_y": 270, "map_bench_y": 730, "GRID_W": 720, "selected_map_tile": null, "in_grid_region": false, "in_map_bench_region": false}, "time": 1771961538.8239627}

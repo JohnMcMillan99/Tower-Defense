@@ -1,0 +1,1 @@
+# Models module - game entities and data structures

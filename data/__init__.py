@@ -1,0 +1,1 @@
+# Data module - game constants and configurations

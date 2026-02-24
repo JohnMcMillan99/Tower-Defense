@@ -39,19 +39,32 @@ class PathGenerator:
     def generate_loop(self):
         # For smaller grids, be more lenient with loop generation
         min_margin = min(2, self.width // 4, self.height // 4)  # Adaptive margin
-        for i in range(len(self.path)):
+        for i in range(len(self.path) - 1):  # Need i+1 to exist
             px, py = self.path[i]
+            next_x, next_y = self.path[i+1]
             if px > min_margin and px < self.width - min_margin - 1 and py > min_margin and py < self.height - min_margin - 1:
-                # Try smaller loops for smaller grids
-                loop_size = min(2, self.width // 5, self.height // 5)
-                cells_to_check = []
-                for dy in range(loop_size + 1):
-                    for dx in range(loop_size + 1):
-                        if dx == 0 and dy == 0:
-                            continue  # Skip the current cell
-                        cells_to_check.append((px + dx, py + dy))
+                # Create a simple detour: go right, then back to next cell
+                detour_cells = []
+                # Go right from current cell
+                detour_x = px + 1
+                detour_y = py
+                if self.cell_is_free(detour_x, detour_y):
+                    detour_cells.append((detour_x, detour_y))
+                    # Try to connect back to next cell
+                    if abs(detour_x - next_x) + abs(detour_y - next_y) == 1:
+                        # Direct connection
+                        pass
+                    elif detour_y != next_y and self.cell_is_free(detour_x, next_y):
+                        # Go to same x as detour, y as next
+                        detour_cells.append((detour_x, next_y))
+                    elif detour_x != next_x and self.cell_is_free(next_x, detour_y):
+                        # Go to same y as detour, x as next
+                        detour_cells.append((next_x, detour_y))
 
-                if all(self.cell_is_free(cx, cy) for cx, cy in cells_to_check):
-                    self.path[i+1:i+1] = cells_to_check
-                    return True
+                    if detour_cells and all(self.cell_is_free(cx, cy) for cx, cy in detour_cells):
+                        # Make sure the last detour cell connects to next cell
+                        last_dx, last_dy = detour_cells[-1]
+                        if abs(last_dx - next_x) + abs(last_dy - next_y) == 1:
+                            self.path[i+1:i+1] = detour_cells
+                            return True
         return False
