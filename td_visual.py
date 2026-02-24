@@ -91,6 +91,51 @@ UNIT_TYPES = [
 ]
 
 # ==============================
+# SHOP TILE TYPES (Map Expansion)
+# ==============================
+TILE_TYPES = [
+    {
+        "name": "Straight Tile",
+        "width": 2, "height": 1,
+        "base_cost": 5,
+        "path_grid": [[True, True]]  # 2x1 path from left to right
+    },
+    {
+        "name": "Curve Tile",
+        "width": 2, "height": 2,
+        "base_cost": 8,
+        "path_grid": [
+            [True, False],
+            [True, True]
+        ]  # L-shape: left to bottom
+    },
+    {
+        "name": "T-Junction",
+        "width": 2, "height": 2,
+        "base_cost": 10,
+        "path_grid": [
+            [True, True],
+            [False, True]
+        ]  # T-shape: left, right, down
+    },
+    {
+        "name": "Cross Tile",
+        "width": 2, "height": 2,
+        "base_cost": 12,
+        "path_grid": [
+            [True, True],
+            [True, True]
+        ]  # Cross: all directions
+    },
+    {
+        "name": "Large Straight",
+        "width": 3, "height": 1,
+        "base_cost": 7,
+        "path_grid": [[True, True, True]]  # 3x1 path
+    },
+]
+
+# ==============================
 # HARDWARE TRAITS (for software synergy)
 # ==============================
 TOWER_TRAITS = {
@@ -414,11 +459,16 @@ class Tower:
 # GAME
 # ==============================
 class Game:
-    def __init__(self, height=10, width=20, min_path_len=40):
-        self.height = height
-        self.width = width
-        self.grid = [["." for _ in range(width)] for _ in range(height)]
-        self.path_gen = PathGenerator(height, width)
+    def __init__(self, height=6, width=10, min_path_len=20):
+        # Core playable area (center of expanded grid)
+        self.core_height = height
+        self.core_width = width
+        # Expanded grid with border (add 4 nodes on each side)
+        self.border_size = 4
+        self.height = height + 2 * self.border_size
+        self.width = width + 2 * self.border_size
+        self.grid = [["." for _ in range(self.width)] for _ in range(self.height)]
+        self.path_gen = PathGenerator(self.core_height, self.core_width)
         self.regenerate_map(min_path_len)
         self.enemies = []
         self.enemy_grid = [[[] for _ in range(self.width)] for _ in range(self.height)]
@@ -431,7 +481,10 @@ class Game:
         self.reroll_cost = 2
         self.shop = [None] * 5
         self.bench = [None] * 10
+        self.map_tile_bench = [None] * 3  # Separate bench for map tiles (increased size)
         self.selected_tower = None
+        self.selected_map_tile = None  # Selected tile from map bench
+        self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
         self.merge_tower_1 = None
         self.merge_tower_2 = None
         self.merge_preview = None
@@ -455,13 +508,14 @@ class Game:
         self.egrem_flash_until = 0    # frame when flash ends
         self.egrem_flash_bench_idx = None
         self.auto_mode = False  # Auto wave toggle
+        self.shop_mode = "towers"  # "towers" or "tiles"
         self.generate_shop()
 
     def regenerate_map(self, min_len):
         while True:
             self.path_gen.generate_path()
             loops = 0
-            while self.path_gen.generate_loop() and loops < 3:
+            while self.path_gen.generate_loop() and loops < 1:  # Limit to 1 loop for less cramping
                 loops += 1
             if len(self.path_gen.path) >= min_len:
                 break
@@ -470,9 +524,13 @@ class Game:
     def generate_shop(self):
         for i in range(5):
             if self.shop[i] is None:
-                typ = random.choice([u["name"] for u in UNIT_TYPES])
-                cost = next(u["base_cost"] for u in UNIT_TYPES if u["name"] == typ)
-                self.shop[i] = {"type": typ, "cost": cost}
+                if self.shop_mode == "towers":
+                    typ = random.choice([u["name"] for u in UNIT_TYPES])
+                    cost = next(u["base_cost"] for u in UNIT_TYPES if u["name"] == typ)
+                    self.shop[i] = {"type": typ, "cost": cost}
+                elif self.shop_mode == "tiles":
+                    tile = random.choice(TILE_TYPES)
+                    self.shop[i] = {"type": tile["name"], "cost": tile["base_cost"], "tile_data": tile}
 
     def move_to_bench(self, shop_idx):
         if shop_idx < 0 or shop_idx >= 5 or self.shop[shop_idx] is None:
@@ -480,21 +538,34 @@ class Game:
         card = self.shop[shop_idx]
         if self.gold < card["cost"]:
             return False
-        tower = Tower(0, 0, card["type"])
-        tower.gold_invested = card["cost"]
-        for i in range(10):
-            if self.bench[i] is None:
-                self.bench[i] = tower
-                self.gold -= card["cost"]
-                self.shop[shop_idx] = None
-                self.selected_tower = None
-                self.merge_tower_1 = None
-                self.merge_tower_2 = None
-                self.merge_preview = None
-                self.egrem_preview = False
-                self.reset_egrem_consecutive()
-                return True
-        return False
+
+        if self.shop_mode == "tiles":
+            # Move tile to map tile bench
+            tile_data = card["tile_data"]
+            for i in range(3):  # Updated for larger bench
+                if self.map_tile_bench[i] is None:
+                    self.map_tile_bench[i] = tile_data.copy()
+                    self.gold -= card["cost"]
+                    self.shop[shop_idx] = None
+                    return True
+            return False
+        else:
+            # Move tower to regular bench
+            tower = Tower(0, 0, card["type"])
+            tower.gold_invested = card["cost"]
+            for i in range(10):
+                if self.bench[i] is None:
+                    self.bench[i] = tower
+                    self.gold -= card["cost"]
+                    self.shop[shop_idx] = None
+                    self.selected_tower = None
+                    self.merge_tower_1 = None
+                    self.merge_tower_2 = None
+                    self.merge_preview = None
+                    self.egrem_preview = False
+                    self.reset_egrem_consecutive()
+                    return True
+            return False
 
     def reroll_shop(self):
         if self.gold < self.reroll_cost:
@@ -854,6 +925,184 @@ class Game:
             if self.auto_mode:
                 self.start_next_wave()
 
+    # ------------------------------------------------------------------
+    # Tile placement helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _rotate_grid(grid, times):
+        """Rotate a 2-D list of booleans 90° clockwise `times` times."""
+        result = [list(row) for row in grid]
+        for _ in range(times % 4):
+            result = [list(row) for row in zip(*result[::-1])]
+        return result
+
+    @staticmethod
+    def _get_tile_path_cells(tile_data, gx, gy, rotation):
+        """Return list of world-coord (wx, wy) cells that are path cells in the rotated tile."""
+        rotated = Game._rotate_grid(tile_data["path_grid"], rotation)
+        cells = []
+        for dy, row in enumerate(rotated):
+            for dx, val in enumerate(row):
+                if val:
+                    cells.append((gx + dx, gy + dy))
+        return cells
+
+    @staticmethod
+    def _get_path_segments(cell_list):
+        """Return a set of frozensets representing adjacency segments between consecutive path cells."""
+        segments = set()
+        cell_set = set(cell_list)
+        for (x, y) in cell_list:
+            for nx, ny in [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]:
+                if (nx, ny) in cell_set:
+                    segments.add(frozenset([(x, y), (nx, ny)]))
+        return segments
+
+    @staticmethod
+    def _get_endpoints(cell_list):
+        """Return cells that have exactly 1 neighbour within the cell list (path endpoints)."""
+        cell_set = set(cell_list)
+        endpoints = []
+        for (x, y) in cell_list:
+            neighbours = sum(1 for nx, ny in [(x+1,y),(x-1,y),(x,y+1),(x,y-1)] if (nx,ny) in cell_set)
+            if neighbours <= 1:
+                endpoints.append((x, y))
+        return endpoints
+
+    def _get_map_path_segments(self):
+        """Return the set of frozenset segments from the current map path."""
+        segments = set()
+        for i in range(len(self.path) - 1):
+            segments.add(frozenset([self.path[i], self.path[i+1]]))
+        return segments
+
+    def _get_map_path_endpoints(self):
+        """Return set of map path endpoints (start, end, and any dead-ends with exactly 1 neighbor)."""
+        if not self.path:
+            return set()
+        path_set = set(self.path)
+        endpoints = set()
+        for cell in self.path:
+            neighbors_in_path = sum(1 for nx, ny in [(cell[0]+1, cell[1]), (cell[0]-1, cell[1]), (cell[0], cell[1]+1), (cell[0], cell[1]-1)] if (nx, ny) in path_set)
+            if neighbors_in_path <= 1:
+                endpoints.add(cell)
+        return endpoints
+
+    def can_place_tile(self, tile_data, gx, gy, rotation):
+        """Check if a tile can be placed at the given grid position with rotation.
+
+        Rules:
+          1. Tile must fit within grid bounds.
+          2. No tile cell may overlap an existing tower or path cell.
+          3. At least one tile path endpoint must be adjacent to the map path
+             start (game.path[0]) or end (game.path[-1]).
+          4. No tile path segment may duplicate an existing map path segment.
+        """
+        rotated = self._rotate_grid(tile_data["path_grid"], rotation)
+        tile_h = len(rotated)
+        tile_w = len(rotated[0]) if rotated else 0
+
+        # Rule 1 – bounds
+        if gx < 0 or gy < 0 or gx + tile_w > self.width or gy + tile_h > self.height:
+            return False
+
+        # Rule 2 – no overlap with towers or existing path
+        for dy in range(tile_h):
+            for dx in range(tile_w):
+                cell = self.grid[gy + dy][gx + dx]
+                if cell != '.':
+                    return False
+
+        tile_cells = self._get_tile_path_cells(tile_data, gx, gy, rotation)
+        if not tile_cells:
+            return False
+
+        # Rule 3 – at least one tile endpoint must be adjacent to the path end (only global end, no mid-path)
+        tile_endpoints = self._get_endpoints(tile_cells)
+        map_end = self.path[-1] if self.path else None
+
+        def adjacent(a, b):
+            return abs(a[0]-b[0]) + abs(a[1]-b[1]) == 1
+
+        connects = map_end and any(adjacent(te, map_end) for te in tile_endpoints)
+        if not connects:
+            print(f"Placement fail: Not adjacent to path end {map_end}")  # Debug for green preview issue
+            return False
+
+        # Rule 4 – no tile segment duplicates an existing map segment
+        map_segs = self._get_map_path_segments()
+        tile_segs = self._get_path_segments(tile_cells)
+        if map_segs & tile_segs:
+            print(f"Placement fail: Segment overlap")
+            return False
+
+        return True
+
+    def place_map_tile(self, tile_data, gx, gy, rotation):
+        """Place a map tile at the given position, extending the map and path.
+
+        The new path cells are inserted at the correct end of game.path so that
+        the path remains a continuous ordered sequence.
+        """
+        rotated = self._rotate_grid(tile_data["path_grid"], rotation)
+        tile_h = len(rotated)
+        tile_w = len(rotated[0]) if rotated else 0
+
+        tile_cells = self._get_tile_path_cells(tile_data, gx, gy, rotation)
+        tile_endpoints = self._get_endpoints(tile_cells)
+
+        def adjacent(a, b):
+            return abs(a[0]-b[0]) + abs(a[1]-b[1]) == 1
+
+        # Only append to the path end (no prepending to start)
+        append_to_end = True
+        connector_tile_ep = None
+
+        map_end = self.path[-1] if self.path else None
+        if map_end:
+            for te in tile_endpoints:
+                if adjacent(te, map_end):
+                    connector_tile_ep = te
+                    break
+
+        # Build an ordered list of new path cells starting from the connector endpoint.
+        # BFS/walk through the tile's path cells.
+        if connector_tile_ep and tile_cells:
+            ordered = []
+            remaining = set(tile_cells)
+            current = connector_tile_ep
+            while current in remaining:
+                ordered.append(current)
+                remaining.remove(current)
+                next_cells = [
+                    (nx, ny) for nx, ny in
+                    [(current[0]+1, current[1]), (current[0]-1, current[1]),
+                     (current[0], current[1]+1), (current[0], current[1]-1)]
+                    if (nx, ny) in remaining
+                ]
+                if not next_cells:
+                    break
+                current = next_cells[0]
+            # Add any remaining cells (shouldn't happen for simple paths)
+            ordered.extend(remaining)
+        else:
+            ordered = list(tile_cells)
+
+        # Always append to the end
+        self.path.extend(ordered)
+
+        # Mark grid cells
+        for dy in range(tile_h):
+            for dx in range(tile_w):
+                if rotated[dy][dx]:
+                    self.grid[gy + dy][gx + dx] = 'P'  # path
+                else:
+                    self.grid[gy + dy][gx + dx] = 'X'  # expanded non-path
+
+        print(f"Placed {tile_data['name']} at ({gx},{gy}) rot={rotation*90}°, "
+              f"added {len(ordered)} path cells, {'appended' if append_to_end else 'prepended'}")
+
     def spawn_enemy_at_position(self, enemy_type, x, y, wave_num=1):
         """Spawn an enemy at a specific grid position (for egrem towers)."""
         if 0 <= x < self.width and 0 <= y < self.height:
@@ -917,6 +1166,8 @@ tower_colors = {
 
 frame = 0
 grid_y = SHOP_H + BENCH_H
+map_bench_x = 15
+map_bench_y = HEIGHT - 100
 
 running = True
 while running:
@@ -924,6 +1175,13 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT or event.key == pygame.K_a:
+                if game.selected_map_tile is not None:
+                    game.selected_tile_rotation = (game.selected_tile_rotation - 1) % 4
+            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+                if game.selected_map_tile is not None:
+                    game.selected_tile_rotation = (game.selected_tile_rotation + 1) % 4
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
             if event.button == 1:
@@ -985,6 +1243,13 @@ while running:
                         y = 15
                         if x <= mx <= x+70 and y <= my <= y+100:
                             game.move_to_bench(i)
+                    # Shop mode toggle (moved here to match its new position)
+                    tx = map_bench_x + 3*80 + 20
+                    ty = map_bench_y
+                    if tx <= mx <= tx+35 and ty <= my <= ty+35:
+                        game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
+                        game.shop = [None] * 5  # Clear shop when switching modes
+                        game.generate_shop()
                     # Reroll
                     rx = 15 + 5*80
                     if rx <= mx <= rx+35 and 65 <= my <= 100:
@@ -1031,36 +1296,83 @@ while running:
                         # Handle cancel if clicked outside merge/egrem area
                         if (game.merge_preview or game.egrem_preview) and not clicked_on_bench_card:
                             game.cancel_merge()
-                # Grid: place from bench, select enemy, or open upgrade dialog on placed tower
+                # Map Tile Bench
+                elif my >= map_bench_y and my < map_bench_y + 80:
+                    for i in range(3):  # Updated for larger bench
+                        x = map_bench_x + i * 80
+                        y = map_bench_y
+                        if x <= mx <= x+70 and y <= my <= y+80:
+                            if game.map_tile_bench[i] is not None:
+                                game.selected_map_tile = i
+                                game.selected_tile_rotation = 0
+                                break
+                                    # Rotate buttons (left: counterclockwise, right: clockwise)
+                if game.selected_map_tile is not None:
+                    rot_x = map_bench_x + 3*80 + 10  # Adjusted for 3 slots
+                    rot_y = map_bench_y + 5
+                    # Left rotate button (<)
+                    if rot_x <= mx <= rot_x + 26 and rot_y <= my <= rot_y + 26:
+                        game.selected_tile_rotation = (game.selected_tile_rotation - 1) % 4
+                    # Right rotate button (>)
+                    elif rot_x + 34 <= mx <= rot_x + 60 and rot_y <= my <= rot_y + 26:
+                        game.selected_tile_rotation = (game.selected_tile_rotation + 1) % 4
+                # Grid: place from bench, place map tile, select enemy, or open upgrade dialog on placed tower
                 elif my >= grid_y and mx < GRID_W:
-                    gx = mx // TILE
-                    gy = (my - grid_y) // TILE
-                    if game.selected_tower is not None and game.merge_preview is None and not game.egrem_preview:
-                        game.place_tower(gx, gy, bench_idx=game.selected_tower)
+                    # Check for shop mode toggle click (at map bench position)
+                    if my >= map_bench_y and my < map_bench_y + 80:
+                        tx = map_bench_x + 3*80 + 20
+                        ty = map_bench_y
+                        if tx <= mx <= tx+35 and ty <= my <= ty+35:
+                            game.shop_mode = "tiles" if game.shop_mode == "towers" else "towers"
+                            game.shop = [None] * 5  # Clear shop when switching modes
+                            game.generate_shop()
+                        # Map tile bench selection
+                        for i in range(3):  # Updated for larger bench
+                            x = map_bench_x + i * 80
+                            y = map_bench_y
+                            if x <= mx <= x+70 and y <= my <= y+80:
+                                if game.map_tile_bench[i] is not None:
+                                    game.selected_map_tile = i
+                                    game.selected_tile_rotation = 0
+                                    break
                     else:
-                        if game.merge_preview or game.egrem_preview or game.merge_tower_1 is not None:
-                            game.cancel_merge()
-                        # Check for enemy selection first
-                        enemy_selected = False
-                        if 0 <= gx < game.width and 0 <= gy < game.height:
-                            for e in game.enemy_grid[gy][gx]:
-                                if e.alive:
-                                    game.selected_enemy = e
-                                    game.upgrade_dialog_tower = None  # Clear tower selection
-                                    enemy_selected = True
-                                    break
-                        if not enemy_selected:
-                            # Left-click on placed tower: open upgrade dialog
-                            for t in game.towers:
-                                if t.x == gx and t.y == gy:
-                                    game.upgrade_dialog_tower = t
-                                    game.upgrade_dialog_choices = game.get_upgrade_choices(t)
-                                    game.selected_enemy = None  # Clear enemy selection
-                                    break
-                            else:
-                                # Clicked on empty grid: clear selections
-                                game.selected_enemy = None
-                                game.upgrade_dialog_tower = None
+                        gx = mx // TILE
+                        gy = (my - grid_y) // TILE
+                        if game.selected_map_tile is not None:
+                            # Place map tile to expand grid
+                            tile_data = game.map_tile_bench[game.selected_map_tile]
+                            if tile_data and game.can_place_tile(tile_data, gx, gy, game.selected_tile_rotation):
+                                game.place_map_tile(tile_data, gx, gy, game.selected_tile_rotation)
+                                # Remove tile from bench after placement
+                                game.map_tile_bench[game.selected_map_tile] = None
+                                game.selected_map_tile = None
+                                game.selected_tile_rotation = 0
+                        elif game.selected_tower is not None and game.merge_preview is None and not game.egrem_preview:
+                            game.place_tower(gx, gy, bench_idx=game.selected_tower)
+                        else:
+                            if game.merge_preview or game.egrem_preview or game.merge_tower_1 is not None:
+                                game.cancel_merge()
+                            # Check for enemy selection first
+                            enemy_selected = False
+                            if 0 <= gx < game.width and 0 <= gy < game.height:
+                                for e in game.enemy_grid[gy][gx]:
+                                    if e.alive:
+                                        game.selected_enemy = e
+                                        game.upgrade_dialog_tower = None  # Clear tower selection
+                                        enemy_selected = True
+                                        break
+                            if not enemy_selected:
+                                # Left-click on placed tower: open upgrade dialog
+                                for t in game.towers:
+                                    if t.x == gx and t.y == gy:
+                                        game.upgrade_dialog_tower = t
+                                        game.upgrade_dialog_choices = game.get_upgrade_choices(t)
+                                        game.selected_enemy = None  # Clear enemy selection
+                                        break
+                                else:
+                                    # Clicked on empty grid: clear selections
+                                    game.selected_enemy = None
+                                    game.upgrade_dialog_tower = None
             elif event.button == 3:
                 # Right-click: cancel merge/egrem if preview is open
                 if game.merge_preview or game.egrem_preview or game.merge_tower_1 is not None:
@@ -1094,8 +1406,31 @@ while running:
         pygame.draw.rect(screen, col, (x,y,70,100))
         pygame.draw.rect(screen, TEXT, (x,y,70,100), 1 if card else 2)
         if card:
-            screen.blit(font_s.render(card["type"][:8], True, TEXT), (x+5,y+10))
-            screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
+            # Display tile info differently for tiles vs towers
+            if "tile_data" in card:
+                tile = card["tile_data"]
+                screen.blit(font_s.render(tile["name"][:10], True, TEXT), (x+5,y+5))
+                screen.blit(font_s.render(f"{tile['width']}x{tile['height']}", True, TEXT), (x+5,y+20))
+                # Draw mini path preview
+                path_grid = tile["path_grid"]
+                cell_size = 8
+                start_x = x + 35 - (len(path_grid[0]) * cell_size) // 2
+                start_y = y + 35
+                for py in range(len(path_grid)):
+                    for px in range(len(path_grid[py])):
+                        if path_grid[py][px]:
+                            pygame.draw.rect(screen, PATH, (start_x + px*cell_size, start_y + py*cell_size, cell_size, cell_size))
+                screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
+            else:
+                screen.blit(font_s.render(card["type"][:8], True, TEXT), (x+5,y+10))
+                screen.blit(font_s.render(f"${card['cost']}", True, TEXT), (x+5,y+75))
+
+    # Shop mode toggle (next to map tile bench on right)
+    tx = map_bench_x + 3*80 + 20  # Positioned right of the enlarged bench
+    ty = map_bench_y
+    pygame.draw.rect(screen, CARD_BG, (tx,ty,35,35))
+    pygame.draw.rect(screen, TEXT, (tx,ty,35,35), 1)
+    screen.blit(font_s.render("T" if game.shop_mode == "towers" else "M", True, TEXT), (tx+10,ty+10))
 
     # Reroll
     rx = 15 + 400
@@ -1107,6 +1442,50 @@ while running:
     pygame.draw.rect(screen, BENCH_BG, (0,SHOP_H,GRID_W,BENCH_H))
     pygame.draw.line(screen, GRID, (0,SHOP_H+BENCH_H), (GRID_W,SHOP_H+BENCH_H), 2)
     screen.blit(font_s.render("BENCH", True, TEXT), (15, SHOP_H+5))
+
+    # Map Tile Bench (bottom left, enlarged)
+    pygame.draw.rect(screen, SHOP_BG, (0, map_bench_y-10, 280, 100))  # Widened for 3 slots
+    pygame.draw.line(screen, GRID, (0, map_bench_y-10), (280, map_bench_y-10), 2)
+    screen.blit(font_s.render("MAP TILES", True, TEXT), (15, map_bench_y-5))
+    for i in range(3):  # Updated for larger bench
+        x = map_bench_x + i * 80
+        y = map_bench_y
+        col = CARD_EMP if game.map_tile_bench[i] is None else CARD_BG
+        if i == game.selected_map_tile:
+            col = CARD_SEL
+        pygame.draw.rect(screen, col, (x,y,70,80))
+        pygame.draw.rect(screen, TEXT, (x,y,70,80), 2)
+        if game.map_tile_bench[i]:
+            tile = game.map_tile_bench[i]
+            screen.blit(font_s.render(tile["name"][:8], True, TEXT), (x+5,y+10))
+            screen.blit(font_s.render(f"{tile['width']}x{tile['height']}", True, TEXT), (x+5,y+50))
+
+    # Rotate button next to map bench
+    if game.selected_map_tile is not None:
+        rot_x = map_bench_x + 2*80 + 10
+        rot_y = map_bench_y + 5
+
+        # Left rotate button  ◄
+        pygame.draw.rect(screen, PANEL_BTN, (rot_x, rot_y, 26, 26))
+        pygame.draw.rect(screen, TEXT, (rot_x, rot_y, 26, 26), 1)
+        screen.blit(font_s.render("<", True, TEXT), (rot_x + 8, rot_y + 6))
+
+        # Right rotate button  ►
+        pygame.draw.rect(screen, PANEL_BTN, (rot_x + 34, rot_y, 26, 26))
+        pygame.draw.rect(screen, TEXT, (rot_x + 34, rot_y, 26, 26), 1)
+        screen.blit(font_s.render(">", True, TEXT), (rot_x + 42, rot_y + 6))
+
+        # Degree label between buttons
+        deg_lbl = font_s.render(f"{game.selected_tile_rotation * 90}\u00b0", True, TEXT)
+        screen.blit(deg_lbl, (rot_x + 27 - deg_lbl.get_width() // 2, rot_y + 7))
+
+        # Step indicator below  e.g. "2/4"
+        step_lbl = font_s.render(f"{game.selected_tile_rotation + 1}/4", True, (160, 160, 180))
+        screen.blit(step_lbl, (rot_x + 30 - step_lbl.get_width() // 2, rot_y + 30))
+
+        # Hint text
+        hint_lbl = font_s.render("A/D or </> rotate", True, (120, 120, 140))
+        screen.blit(hint_lbl, (rot_x - 10, rot_y + 46))
     for i in range(10):
         x = 15 + i * 68
         y = SHOP_H + 15
@@ -1335,6 +1714,48 @@ while running:
                 pygame.draw.circle(s, (100,160,255,60), (r+2,r+2), r)
                 pygame.draw.circle(s, (160,220,255,180), (r+2,r+2), r, 2)
                 screen.blit(s, (cx-r-2, cy-r-2))
+
+    # Tile placement preview at mouse cursor
+    if game.selected_map_tile is not None and game.map_tile_bench[game.selected_map_tile]:
+        mx, my = pygame.mouse.get_pos()
+        if my >= grid_y and mx < GRID_W:
+            gx = mx // TILE
+            gy = (my - grid_y) // TILE
+            tile_data = game.map_tile_bench[game.selected_map_tile]
+
+            # Use the helper to get the rotated grid
+            rotated_grid = Game._rotate_grid(tile_data["path_grid"], game.selected_tile_rotation)
+
+            # Check validity for color feedback
+            placement_valid = game.can_place_tile(tile_data, gx, gy, game.selected_tile_rotation)
+
+            # Color: green tint if valid, red tint if invalid
+            if placement_valid:
+                fill_color  = (60, 200, 80, 130)   # green, semi-transparent
+                border_color = (80, 255, 100)
+            else:
+                fill_color  = (220, 60, 60, 130)   # red, semi-transparent
+                border_color = (255, 80, 80)
+
+            # Draw preview at mouse position
+            preview_x = gx * TILE
+            preview_y = grid_y + gy * TILE
+            cell_size = TILE
+
+            for py in range(len(rotated_grid)):
+                for px in range(len(rotated_grid[py])):
+                    if rotated_grid[py][px]:
+                        rect = pygame.Rect(preview_x + px*cell_size, preview_y + py*cell_size, cell_size, cell_size)
+                        s = pygame.Surface((cell_size, cell_size), pygame.SRCALPHA)
+                        s.fill(fill_color)
+                        screen.blit(s, rect)
+                        pygame.draw.rect(screen, border_color, rect, 2)
+
+            # Draw a small validity label near the cursor
+            label_text = "OK" if placement_valid else "X"
+            label_col  = (80, 255, 100) if placement_valid else (255, 80, 80)
+            lbl = font_s.render(label_text, True, label_col)
+            screen.blit(lbl, (mx + 14, my - 14))
 
     # Attack beams
     for t in game.towers:

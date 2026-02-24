@@ -29,15 +29,16 @@ A Borg-themed tower defense roguelike with a **merge-based tower progression sys
 - Drag towers from bench to grid or to other bench slots
 - Reroll cost: 1 gold (not yet fully implemented in wave loop)
 
-#### 2. **Tower Types** (5 Borg-themed variants)
+#### 2. **Tower Types** (5 Borg-themed hardware components)
 
-| Tower | Color | Base DMG | Range | Fire Rate | Role |
-|-------|-------|----------|-------|-----------|------|
-| **Firewall** | Blue | 6 | 3 | 1.0 | Network defense, balanced |
-| **Antivirus** | Green | 9 | 2 | 1.0 | High damage, short-range |
-| **Encryption** | Purple | 8 | 3 | 1.2 | Fast-firing, medium damage |
-| **Monitor** | Orange | 4 | 4 | 1.0 | Long-range, low damage |
-| **Validator** | Red | 7 | 3 | 1.0 | Mid-tier specialist |
+| Tower | Color | Base DMG | Range | Fire Rate | Fire Type | Role |
+|-------|-------|----------|-------|-----------|-----------|------|
+| **Neural Processor** | Blue | 6 | 2 | 1 | TargetBeam | Balanced targeting |
+| **Plasma Capacitor** | Green | 10 | 2 | 4 | Ball | Burst damage |
+| **Thermal Regulator** | Orange | 4 | 3 | 2 | DirectionalBeam | Area denial |
+| **Signal Router** | Purple | 7 | 4 | 2 | Track | Path control |
+| **Quantum Field Gen** | Yellow | 2 | 99 | 10 | Overwatch | Global coverage |
+| **Nanite Swarm** | Dark Grey | 0 | 0 | 0 | Spawner | Enemy generation |
 
 #### 3. **Tower Merging System**
 - **2-for-1 Merge**: Combine 2 towers → 1 stronger tower
@@ -201,28 +202,35 @@ python td_visual.py
 ## Current State & Testing
 
 ### ✅ What Works
-- Shop UI fully functional (card selection, bench placement)
+- Shop UI fully functional (card selection, bench placement, reroll)
 - Tower merging logic and UI (tier restrictions, preview, confirm)
-- Enemy type system with progressive introduction
+- Egrem system (wrong-tier merges create spawning towers)
+- Upgrade system with trait synergies and heat mechanics
+- Enemy type system with progressive introduction and debuffs
 - Wave scaling (enemies get harder each wave)
+- Gold economy (kill rewards, wave bonuses, interest, purchasing)
+- Lives system and game over screen with restart
+- Multiple tower fire types (beam, ball, directional, track, overwatch, radius, spawner)
+- Auto wave mode and staggered enemy spawning
 - Pygame rendering (towers render with correct colors, enemies spawn/move)
 - Game loop integration (waves progress, enemies spawn at intervals)
 
 ### 🟡 Partially Tested
-- Tower damage calculations (implemented but not heavily tested against waves)
-- Enemy movement speed (implemented, may need tuning)
-- Gold economy (not fully connected to gameplay)
+- Tower damage calculations (implemented but balance needs tuning)
+- Enemy movement speed and debuff effects
+- Upgrade synergies and heat/overheat mechanics
+- Egrem spawning balance
 
-### ❌ Not Yet Implemented
-- **Gold System**: Killing enemies should reward gold
-- **Lives System**: Losing all lives = game over
-- **Game Over Screen**: End state UI
-- **Sound/Music**: Audio effects (volume button is placeholder)
-- **Difficulty Modes**: Hard, Hardcore variants
-- **Leaderboard**: High score tracking
-- **Tower Targeting**: Currently towers don't actively target enemies (path-based)
-- **Ability System**: Special tower abilities on cooldown
-- **Map Variations**: Multiple procedural paths
+### ❌ Major Gaps / Future Features
+- **Tower Merge Complexity**: Current merges are generic tier progression. Missing unique combinations, merge trees, and strategic depth.
+- **Enemy Adaptation**: Enemies are static types. Missing dynamic response to player strategies (tower types, placements, merges).
+- **Expanding Grid System**: Fixed 3x20 grid. Missing tile-based expansion, path connections, shop rotation.
+- **Enemy Difficulty Tiers**: Current types don't map to normal/elite/mini-boss/boss/event with tied scaling.
+- **Performance Optimizations**: Need spatial hashing, object pooling for larger maps/enemies.
+- **Sound/Music**: Audio effects (volume button is placeholder).
+- **Difficulty Modes**: Hard, Hardcore variants.
+- **Leaderboard**: High score tracking.
+- **Map Variations**: Multiple procedural paths.
 
 ---
 
@@ -268,17 +276,44 @@ Current focus: Core economy and wave systems stable; next priorities are visual 
 
 ---
 
-## Prioritized Feature Roadmap
+## Phased Development Roadmap
 
-| Priority | Feature / Fix | Status | Est. Effort | Notes |
-|----------|---------------|--------|-------------|-------|
-| **1** | **Gold on kill + interest mechanic** | ✅ Done | Low | Enemies award gold based on difficulty; 10% interest bonus at wave completion |
-| **2** | **Projectiles / attack visuals** | 📋 Pending | Medium | Would improve visual feedback when towers shoot |
-| **3** | **Staggered enemy spawning** | ✅ Done | Low–Medium | Enemies spawn gradually from queue every 30 frames, preventing overwhelming waves |
-| **4** | **Game Over + Restart screen** | ✅ Done | Low | Overlay shows final wave reached and gold earned; click to restart |
-| **5** | **Fix bench → grid placement** | ✅ Done | Low | Click bench card to select, then click grid to place (no additional cost) |
-| **6** | **Range preview on hover/selection** | 📋 Pending | Medium | Would help players plan tower placement |
-| **7** | **Sell from bench** | ✅ Done | Low | Right-click bench card to sell for 50% refund |
-| **8** | **Tower upgrade path / synergies** | 📋 Pending | Medium–High | Could add multiplicative bonuses for specific parent combinations |
-| **9** | **Enemy death particles / sound** | 📋 Pending | Low–Medium | Would add audio-visual polish to kills |
-| **10** | **Persistent high score** | 📋 Pending | Low | Would save best wave reached to encouragereplay |
+### Phase 1: Expanding Grid System (Current Focus)
+**Goal**: Implement tile-based map expansion with shop rotation.
+- **Tile-Based Expansion**: Purchasable map tiles (2x2, 3x3) with embedded paths.
+- **Path Connection**: Tiles must connect to existing paths, with rotation support.
+- **Fill Mechanic**: Auto-generate paths for imperfect alignments.
+- **Shop Rotation**: Cycles between Towers, Expansion Tiles, Upgrades.
+- **Performance**: Spatial hashing for larger grids, object pooling.
+- **Status**: Design outlined, implementation pending.
+
+### Phase 2: Enemy Complexity Overhaul
+**Goal**: Add adaptive enemies with tiered difficulty.
+- **Enemy Tiers**: Normal, Elite, Mini-Boss, Boss, Event types.
+- **Adaptation System**: Enemies adjust stats based on player strategy profile.
+- **Dynamic Scaling**: Stats tied to difficulty tiers, not just wave numbers.
+- **Performance**: Precomputed adaptations, lightweight debuff system.
+
+### Phase 3: Tower Merge Depth
+**Goal**: Unique merge combinations and synergies.
+- **Merge Trees**: Specific parent combinations unlock special towers.
+- **Synergy Bonuses**: Multiplicative effects for strategic merges.
+- **Evolution System**: Branching progression paths.
+
+### Phase 4: Advanced Mechanics Integration
+**Goal**: Polish and balance all systems.
+- **Event Waves**: Special enemy compositions and goals.
+- **Performance Monitoring**: FPS tracking, optimization passes.
+- **Balance Tuning**: Iterative testing of scaling curves.
+
+### Legacy Roadmap (Completed/Outdated)
+
+| Feature / Fix | Status | Notes |
+|---------------|--------|-------|
+| **Gold on kill + interest mechanic** | ✅ Done | Fully implemented |
+| **Staggered enemy spawning** | ✅ Done | Queue-based system active |
+| **Game Over + Restart screen** | ✅ Done | With final stats display |
+| **Bench placement workflow** | ✅ Done | Click-to-select, place on grid |
+| **Sell from bench** | ✅ Done | Right-click for 50% refund |
+| **Upgrade system** | ✅ Done | Traits, synergies, heat mechanics |
+| **Auto wave mode** | ✅ Done | Toggle for automatic progression |
