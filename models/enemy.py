@@ -10,7 +10,7 @@ class Enemy:
         "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
     }
 
-    def __init__(self, path, enemy_type="Drone", wave_num=1, is_egrem_spawned=False):
+    def __init__(self, path, enemy_type="Drone", wave_num=1, is_egrem_spawned=False, web_mode=False):
         self.path = path
         self.position_index = 0
         self.enemy_type = enemy_type if enemy_type in self.TYPES else "Drone"
@@ -20,15 +20,21 @@ class Enemy:
         self.move_counter = 0.0
         self.is_egrem_spawned = is_egrem_spawned
         self.debuffs = {}  # debuff_type: {'amount': val, 'frames_left': int}
+        self.web_mode = web_mode
         self._calculate_stats()
 
     def _calculate_stats(self):
+        from data.units import WEB_MODE_CONFIG
         base_stats = self.TYPES.get(self.enemy_type, self.TYPES["Drone"])
         difficulty = base_stats["difficulty"]
         wave_scale = 1.0 + (self.wave_num - 1) * 3.5 * difficulty
-        self.max_health = int(base_stats["health"] * wave_scale)
+
+        # Apply web mode scaling if enabled
+        web_scale = WEB_MODE_CONFIG["enemy_scale"] if self.web_mode else 1.0
+
+        self.max_health = int(base_stats["health"] * wave_scale * web_scale)
         self.health = self.max_health
-        self.move_speed = base_stats["speed"]
+        self.move_speed = int(base_stats["speed"] * web_scale)
         self.difficulty = difficulty
         self.display_name = base_stats["display"]
         self.symbol = base_stats["symbol"]

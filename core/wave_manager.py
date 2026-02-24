@@ -19,7 +19,7 @@ class WaveManager:
         if self.game.round_num >= 5: types.append("Harvester")
         if self.game.round_num >= 7: types.append("Adaptor")
         if self.game.round_num >= 9: types.append("Assimilator")
-        self.game.spawn_queue = [Enemy(self.game.path, random.choice(types), self.game.round_num) for _ in range(wave_size)]
+        self.game.spawn_queue = [Enemy(self.game.path, random.choice(types), self.game.round_num, web_mode=self.game.web_mode) for _ in range(wave_size)]
         # Egrem towers on grid spawn 1-2 mini-boss style enemies per wave (fewer, stronger)
         for t in self.game.towers:
             if t.base_type == "Nanite Swarm":
@@ -28,7 +28,7 @@ class WaveManager:
                 else:
                     spawn_count = random.randint(1, 2)
                 for _ in range(spawn_count):
-                    self.game.spawn_queue.append(Enemy(self.game.path, "Assimilator", self.game.round_num + 2))
+                    self.game.spawn_queue.append(Enemy(self.game.path, "Assimilator", self.game.round_num + 2, web_mode=self.game.web_mode))
         self.game.spawn_timer = 0
 
     def update_wave(self, frame):
@@ -97,7 +97,7 @@ class WaveManager:
             # Find the closest path point to this position
             closest_pos = min(self.game.path, key=lambda p: abs(p[0]-x) + abs(p[1]-y))
             closest_idx = self.game.path.index(closest_pos)
-            enemy = Enemy(self.game.path[closest_idx:], enemy_type, wave_num, is_egrem_spawned=True)
+            enemy = Enemy(self.game.path[closest_idx:], enemy_type, wave_num, is_egrem_spawned=True, web_mode=self.game.web_mode)
             self.game.enemies.append(enemy)
             # Add to enemy_grid immediately so towers can target it
             pos = enemy.get_position()

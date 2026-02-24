@@ -20,3 +20,10 @@ TOWER_TRAITS = {
     "Quantum Field Gen":   ["filter", "magnetic"],
     "Nanite Swarm":      ["egrem", "spawner"],
 }
+
+# ==============================
+# WEB MODE CONFIGURATION
+# ==============================
+WEB_MODE_CONFIG = {
+    "enemy_scale": 0.75,  # Reduce enemy health/speed by 25% in browser mode
+}
