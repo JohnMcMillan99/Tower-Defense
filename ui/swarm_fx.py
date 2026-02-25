@@ -8,6 +8,7 @@ stack scaling, particle clusters, and corruption effects.
 import pygame
 import random
 import math
+import sys
 
 # pygbag compatibility - check if gfxdraw is available
 try:
@@ -228,8 +229,8 @@ class DamageNumber:
         alpha = int(255 * (self.lifetime / self.max_lifetime))
         color = (*self.color[:3], alpha)
 
-        # Render text
-        font = pygame.font.SysFont('Arial', 16, bold=True)
+        # Render text (use built-in font in browser - SysFont not available)
+        font = pygame.font.Font(None, 16) if sys.platform == "emscripten" else pygame.font.SysFont('Arial', 16, bold=True)
         text = font.render(str(self.value), True, color)
 
         # Draw text with slight shadow for visibility
