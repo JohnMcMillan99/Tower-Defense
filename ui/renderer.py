@@ -1,5 +1,4 @@
 import os
-import sys
 import pygame
 import json
 from datetime import datetime
@@ -8,21 +7,17 @@ from ui.swarm_fx import SwarmFXManager
 
 
 class Renderer:
-    def __init__(self, game, feature_level=0):
+    def __init__(self, game):
         self.game = game
-        self.feature_level = feature_level
-        bare_bones = feature_level == 0
 
-        # Layout constants (use defaults when bare_bones / game is None)
+        # Layout constants
         self.TILE = 40
         self.SHOP_H = 140
         self.BENCH_H = 130
-        gw = game.width if game else 10
-        self.GRID_W = gw * self.TILE
+        self.GRID_W = game.width * self.TILE
         self.PANEL_RIGHT_W = 180
-        gh = game.height if game else 6
-        self.HEIGHT = self.SHOP_H + self.BENCH_H + gh * self.TILE
         self.WIDTH = self.GRID_W + self.PANEL_RIGHT_W
+        self.HEIGHT = self.SHOP_H + self.BENCH_H + game.height * self.TILE
 
         # Camera system
         self.camera_x = 0
@@ -50,8 +45,7 @@ class Renderer:
         self.TEXT = (220, 220, 220)
 
         # Fonts (use bundled TTF in web - Font(None) can fail in wasm)
-        web_mode = getattr(game, "web_mode", False) if game else (sys.platform == "emscripten")
-        if web_mode:
+        if getattr(game, "web_mode", False):
             font_path = None
             for candidate in [
                 os.path.join(os.path.dirname(__file__), "..", "freesansbold.ttf"),
@@ -81,8 +75,8 @@ class Renderer:
             self.font_merge = pygame.font.SysFont("consolas", 20)
             self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
 
-        # Swarm effects manager (skip when feature_level < 11)
-        self.swarm_fx = None if feature_level < 11 else SwarmFXManager()
+        # Swarm effects manager
+        self.swarm_fx = SwarmFXManager()
 
         # Tower colors
         self.tower_colors = {
@@ -135,59 +129,28 @@ class Renderer:
 
     def draw(self, frame):
         """Main drawing function."""
-        if self.feature_level == 0:
-            # Level 0: Bare bones - verify canvas works
-            self.screen.fill((180, 0, 0))
-            pygame.draw.rect(self.screen, (0, 255, 0), (50, 50, 200, 100))
-            pygame.draw.rect(self.screen, (255, 255, 255), (50, 50, 200, 100), 3)
-            ts = self._render_text(self.font_s, "BARE BONES OK", (0, 0, 0))
-            if ts:
-                self.screen.blit(ts, (70, 85))
-            return
-
         self.screen.fill(self.BLACK)
 
-        # Web debug: bright rect + text (first 600 frames)
-        if getattr(self.game, "web_mode", False) and frame <= 600:
-            pygame.draw.rect(self.screen, (0, 255, 0), (10, 10, 100, 35))
-            pygame.draw.rect(self.screen, (255, 255, 255), (10, 10, 100, 35), 2)
-            ts = self._render_text(self.font_s, "WEB OK", (0, 0, 0))
-            if ts:
-                self.screen.blit(ts, (20, 15))
-
-        # Incremental feature levels
-        if self.feature_level >= 1:
-            self._draw_shop()
-        if self.feature_level >= 2:
-            self._draw_bench(frame)
-        if self.feature_level >= 3:
-            self._draw_right_panel()
-        if self.feature_level >= 4:
-            self._draw_grid()
-        if self.feature_level >= 5:
-            self._draw_map_tile_bench()
-            self._draw_upgrade_bench()
-            self._draw_rotate_button()
-        if self.feature_level >= 6:
-            self._draw_merge_preview()
-        if self.feature_level >= 7:
-            self._draw_towers()
-            self._draw_enemies()
-        if self.feature_level >= 8:
-            self._draw_upgrade_dialog()
-            self._draw_enemy_stats()
-        if self.feature_level >= 9:
-            self._draw_range_preview()
-            self._draw_tile_preview()
-        if self.feature_level >= 10:
-            self._draw_attack_beams(frame)
-        if self.feature_level >= 11:
-            self._draw_latch_effects()
-        if self.feature_level >= 12:
-            self._draw_wave_bonus(frame)
-            self._draw_game_over()
-            self._draw_camera_info()
-            self._draw_version_info()
+        self._draw_shop()
+        self._draw_bench(frame)
+        self._draw_map_tile_bench()
+        self._draw_upgrade_bench()
+        self._draw_rotate_button()
+        self._draw_merge_preview()
+        self._draw_right_panel()
+        self._draw_upgrade_dialog()
+        self._draw_enemy_stats()
+        self._draw_grid()
+        self._draw_range_preview()
+        self._draw_tile_preview()
+        self._draw_attack_beams(frame)
+        self._draw_towers()
+        self._draw_enemies()
+        self._draw_latch_effects()
+        self._draw_wave_bonus(frame)
+        self._draw_game_over()
+        self._draw_camera_info()
+        self._draw_version_info()
 
     def _draw_version_info(self):
         """Draw version/timestamp info in top right corner."""

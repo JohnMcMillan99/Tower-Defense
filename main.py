@@ -5,12 +5,6 @@ from core.game import Game
 from ui.renderer import Renderer
 from ui.events import EventHandler
 
-# DEBUG: Incremental feature level to find visual bug.
-# 0=bare bones, 1=game+shop, 2=+bench, 3=+panel, 4=+grid, 5=+map/upgrade benches,
-# 6=+merge preview, 7=+towers/enemies, 8=+dialogs, 9=+previews, 10=+beams,
-# 11=+swarm fx, 12=full
-FEATURE_LEVEL = 12
-
 # Detect web/browser mode (pygbag runs on emscripten)
 WEB_MODE = sys.platform == "emscripten"
 
@@ -25,34 +19,23 @@ if WEB_MODE:
 # Initialize pygame
 pygame.init()
 
-# Create game and UI components (minimal when FEATURE_LEVEL 0)
-game = Game(web_mode=WEB_MODE) if FEATURE_LEVEL > 0 else None
-renderer = Renderer(game, feature_level=FEATURE_LEVEL)
-handler = EventHandler(game, renderer) if FEATURE_LEVEL > 0 else None
+# Create game and UI components
+game = Game(web_mode=WEB_MODE)
+renderer = Renderer(game)
+handler = EventHandler(game, renderer)
 clock = pygame.time.Clock()
 frame = 0
 
 async def main():
     global frame
-    running = True
-    while running:
-        if handler and not handler.running:
-            running = False
-            break
+    while handler.running:
         frame += 1
 
         # Handle events
-        if handler:
-            handler.handle_events(frame)
-        else:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-            if not running:
-                break
+        handler.handle_events(frame)
 
-        # Update game state (if not paused) - skip when feature level 0
-        if FEATURE_LEVEL > 0 and game and not game.paused:
+        # Update game state (if not paused)
+        if not game.paused:
             game.wave_manager.update_wave(frame)
 
         # Render everything

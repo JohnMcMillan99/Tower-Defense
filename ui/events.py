@@ -93,9 +93,12 @@ class EventHandler:
             self._handle_bench_click(mx, my, frame)
             return
 
-        # Map Tile Bench
-        if my >= self.renderer.map_bench_y and my < self.renderer.map_bench_y + 80:
+        # Map Tile Bench (includes shop mode toggle) - only when in bench x-range
+        map_bench_right = self.renderer.map_bench_x + 3 * 80 + 20 + 35  # includes T/M/U toggle
+        if (my >= self.renderer.map_bench_y and my < self.renderer.map_bench_y + 80
+                and mx < map_bench_right):
             self._handle_map_bench_click(mx, my)
+            return
 
         # Upgrade Bench
         upgrade_bench_y = self.renderer.HEIGHT - 100
@@ -160,20 +163,6 @@ class EventHandler:
                 self.game.economy.move_to_bench(i)
                 return
 
-        # Shop mode toggle
-        tx = self.renderer.map_bench_x + 3*80 + 20
-        ty = self.renderer.map_bench_y
-        if tx <= mx <= tx+35 and ty <= my <= ty+35:
-            if self.game.shop_mode == "towers":
-                self.game.shop_mode = "tiles"
-            elif self.game.shop_mode == "tiles":
-                self.game.shop_mode = "upgrades"
-            else:
-                self.game.shop_mode = "towers"
-            self.game.shop = [None] * 5
-            self.game.economy.generate_shop()
-            return
-
         # Reroll
         rx = 15 + 5*80
         if rx <= mx <= rx+35 and 65 <= my <= 100:
@@ -222,7 +211,21 @@ class EventHandler:
                 self.game.economy.cancel_merge()
 
     def _handle_map_bench_click(self, mx, my):
-        """Handle clicks in the map tile bench."""
+        """Handle clicks in the map tile bench and shop mode toggle."""
+        # Shop mode toggle (drawn next to map tile bench)
+        tx = self.renderer.map_bench_x + 3 * 80 + 20
+        ty = self.renderer.map_bench_y
+        if tx <= mx <= tx + 35 and ty <= my <= ty + 35:
+            if self.game.shop_mode == "towers":
+                self.game.shop_mode = "tiles"
+            elif self.game.shop_mode == "tiles":
+                self.game.shop_mode = "upgrades"
+            else:
+                self.game.shop_mode = "towers"
+            self.game.shop = [None] * 5
+            self.game.economy.generate_shop()
+            return
+
         for i in range(3):
             x = self.renderer.map_bench_x + i * 80
             y = self.renderer.map_bench_y
