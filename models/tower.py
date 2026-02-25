@@ -272,3 +272,28 @@ class Tower:
                 self.last_shot_frame = current_frame
                 return (target, killed)
             return None
+
+    def can_be_latched(self):
+        """
+        Check if this tower can be latched by assimilators.
+
+        Returns:
+            bool: True if tower is vulnerable to latching (hybrid), False if immune (pure)
+        """
+        # Pure towers are immune to latching - currently none are pure by default
+        # This could be extended to make certain tower types (like Diode) pure
+        pure_tower_types = []  # Add tower types that should be pure/immune
+
+        return self.base_type not in pure_tower_types
+
+    def camouflage_repels(self):
+        """
+        Check if this tower's camouflage repels assimilators.
+
+        Returns:
+            bool: True if camouflage is active and repels assimilators
+        """
+        # Camouflage is a meta-unlock that makes pure path segments repel assimilators
+        # For towers, this could be an upgrade or special ability
+        # Currently returns False - would be enabled by meta-unlocks
+        return False

@@ -1,0 +1,31 @@
+enemies:
+  Drone:
+    health: 10
+    speed: 10
+    difficulty: 1
+    latch_eligible: false
+    first_wave: 1
+  Scout:
+    health: 8
+    speed: 6
+    difficulty: 1
+    latch_eligible: false
+    first_wave: 3
+  Harvester:
+    health: 15
+    speed: 12
+    difficulty: 2
+    latch_eligible: false
+    first_wave: 5
+  Adaptor:
+    health: 20
+    speed: 8
+    difficulty: 2
+    latch_eligible: false
+    first_wave: 7
+  Assimilator:
+    health: 25
+    speed: 10
+    difficulty: 3
+    latch_eligible: true
+    first_wave: 9

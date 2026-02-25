@@ -1,0 +1,49 @@
+meta_unlocks:
+  tier_1:
+    - id: bench_slot_1
+      cost: 100
+      effect: bench_slots +1
+    - id: reroll_cheap
+      cost: 150
+      effect: reroll_cost 1
+    - id: start_gold_1
+      cost: 120
+      effect: start_gold +5
+    - id: wave_bonus_1
+      cost: 130
+      effect: wave_bonus_mult 1.1
+    - id: interest_1
+      cost: 140
+      effect: interest_cap +1
+  tier_2:
+    - id: tower_pool_oscillator
+      cost: 300
+      effect: add_tower Oscillator
+    - id: tower_pool_resistor
+      cost: 320
+      effect: add_tower Resistor
+    - id: tower_pool_capacitor
+      cost: 310
+      effect: add_tower Capacitor
+    - id: tower_pool_inductor
+      cost: 330
+      effect: add_tower Inductor
+    - id: tower_pool_diode
+      cost: 340
+      effect: add_tower Diode
+  tier_3:
+    - id: latch_resist
+      cost: 500
+      effect: latch_integrity_drain -0.1
+    - id: camouflage_toggle
+      cost: 550
+      effect: enable_camouflage
+    - id: final_wave_1
+      cost: 520
+      effect: final_wave +1
+    - id: bench_slot_2
+      cost: 480
+      effect: bench_slots +1
+    - id: start_gold_2
+      cost: 490
+      effect: start_gold +10
