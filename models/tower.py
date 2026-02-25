@@ -272,3 +272,34 @@ class Tower:
                 self.last_shot_frame = current_frame
                 return (target, killed)
             return None
+
+    def can_be_latched(self):
+        """
+        Check if this tower can be latched by assimilators.
+
+        Returns:
+            bool: True if tower is vulnerable to latching (hybrid), False if immune (pure)
+        """
+        # Check tier_traits.immune from merges.yaml data
+        if hasattr(self, 'game') and self.game and hasattr(self.game, 'data_loader'):
+            tower_data = self.game.data_loader.get_tower_data(self.base_type)
+            if tower_data and 'tier_traits' in tower_data and 'immune' in tower_data['tier_traits']:
+                immune_tiers = tower_data['tier_traits']['immune']
+                if isinstance(immune_tiers, list) and self.merge_generation in immune_tiers:
+                    return False  # Immune at this tier
+
+        # Default: all towers are vulnerable (hybrid) unless specified otherwise
+        return True
+
+    def camouflage_repels(self):
+        """
+        Check if this tower's camouflage repels assimilators.
+
+        Returns:
+            bool: True if camouflage is active and repels assimilators
+        """
+        # Camouflage is a meta-unlock that makes pure towers repel assimilators
+        # Check if game has the enable_camouflage meta-unlock active
+        if hasattr(self, 'game') and self.game and hasattr(self.game, 'meta_unlocks_active'):
+            return 'enable_camouflage' in self.game.meta_unlocks_active and self.can_be_latched() is False
+        return False

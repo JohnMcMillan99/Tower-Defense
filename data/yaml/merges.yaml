@@ -1,0 +1,85 @@
+towers:
+  Oscillator:
+    dmg: 6
+    range: 2
+    fire_rate: 1
+    fire_type: TargetBeam
+    traits: [switch, logic]
+    base_cost: 3
+    merge_scaling:
+      dmg_mult: [1.0, 1.5, 2.25, 3.375, 5.0625, 7.59375, 11.390625, 17.0859375]
+      range_bonus: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      fire_rate_mult: [1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832, 2.985984, 3.5831808]
+    tier_traits:
+      immune: []
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]
+  Resistor:
+    dmg: 10
+    range: 2
+    fire_rate: 4
+    fire_type: Ball
+    traits: [charge, burst]
+    base_cost: 4
+    merge_scaling:
+      dmg_mult: [1.0, 1.5, 2.25, 3.375, 5.0625, 7.59375, 11.390625, 17.0859375]
+      range_bonus: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      fire_rate_mult: [1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832, 2.985984, 3.5831808]
+    tier_traits:
+      immune: []
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]
+  Capacitor:
+    dmg: 4
+    range: 3
+    fire_rate: 2
+    fire_type: DirectionalBeam
+    traits: [resist, heat]
+    base_cost: 3
+    merge_scaling:
+      dmg_mult: [1.0, 1.5, 2.25, 3.375, 5.0625, 7.59375, 11.390625, 17.0859375]
+      range_bonus: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      fire_rate_mult: [1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832, 2.985984, 3.5831808]
+    tier_traits:
+      immune: []
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]
+  Inductor:
+    dmg: 7
+    range: 4
+    fire_rate: 2
+    fire_type: Track
+    traits: [block, flow]
+    base_cost: 4
+    merge_scaling:
+      dmg_mult: [1.0, 1.5, 2.25, 3.375, 5.0625, 7.59375, 11.390625, 17.0859375]
+      range_bonus: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      fire_rate_mult: [1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832, 2.985984, 3.5831808]
+    tier_traits:
+      immune: []
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]
+  Diode:
+    dmg: 2
+    range: 99
+    fire_rate: 10
+    fire_type: Overwatch
+    traits: [filter, magnetic]
+    base_cost: 5
+    merge_scaling:
+      dmg_mult: [1.0, 1.5, 2.25, 3.375, 5.0625, 7.59375, 11.390625, 17.0859375]
+      range_bonus: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      fire_rate_mult: [1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832, 2.985984, 3.5831808]
+    tier_traits:
+      immune: [4, 5, 6, 7, 8]
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]
+  Transistor:
+    dmg: 0
+    range: 0
+    fire_rate: 0
+    fire_type: Spawner
+    traits: [egrem, spawner]
+    base_cost: 6
+    merge_scaling:
+      dmg_mult: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # No damage scaling for spawners
+      range_bonus: [0, 0, 0, 0, 0, 0, 0, 0]  # No range for spawners
+      fire_rate_mult: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # No fire rate for spawners
+    tier_traits:
+      immune: []
+      overclock_mult: [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35]

@@ -1,6 +1,9 @@
+import os
 import pygame
 import json
+from datetime import datetime
 from models.tower import Tower
+from ui.swarm_fx import SwarmFXManager
 
 
 class Renderer:
@@ -41,10 +44,39 @@ class Renderer:
         self.CARD_EMP = (30, 30, 40)
         self.TEXT = (220, 220, 220)
 
-        # Fonts
-        self.font = pygame.font.SysFont("consolas", 16)
-        self.font_s = pygame.font.SysFont("consolas", 12)
-        self.font_merge = pygame.font.SysFont("consolas", 20)
+        # Fonts (use bundled TTF in web - Font(None) can fail in wasm)
+        if getattr(game, "web_mode", False):
+            font_path = None
+            for candidate in [
+                os.path.join(os.path.dirname(__file__), "..", "freesansbold.ttf"),
+                os.path.join(os.path.dirname(__file__), "..", "assets", "freesansbold.ttf"),
+                "freesansbold.ttf",
+                "assets/freesansbold.ttf",
+            ]:
+                if os.path.exists(candidate):
+                    font_path = candidate
+                    break
+            try:
+                if font_path:
+                    self.font = pygame.font.Font(font_path, 16)
+                    self.font_s = pygame.font.Font(font_path, 12)
+                    self.font_merge = pygame.font.Font(font_path, 20)
+                    self.font_over = pygame.font.Font(font_path, 48)
+                else:
+                    raise FileNotFoundError("freesansbold.ttf")
+            except Exception:
+                self.font = pygame.font.Font(None, 16)
+                self.font_s = pygame.font.Font(None, 12)
+                self.font_merge = pygame.font.Font(None, 20)
+                self.font_over = pygame.font.Font(None, 48)
+        else:
+            self.font = pygame.font.SysFont("consolas", 16)
+            self.font_s = pygame.font.SysFont("consolas", 12)
+            self.font_merge = pygame.font.SysFont("consolas", 20)
+            self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
+
+        # Swarm effects manager
+        self.swarm_fx = SwarmFXManager()
 
         # Tower colors
         self.tower_colors = {
@@ -64,6 +96,16 @@ class Renderer:
         # Initialize screen
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
         pygame.display.set_caption("Borg TD Prototype")
+
+    def _render_text(self, font, text, color, bgcolor=None):
+        """Render text with web compatibility - convert surface for proper blitting."""
+        try:
+            surf = font.render(text, True, color, bgcolor) if bgcolor else font.render(text, True, color)
+            if surf.get_width() > 0 and surf.get_height() > 0:
+                return surf.convert_alpha() if getattr(self.game, "web_mode", False) else surf
+        except Exception:
+            pass
+        return None
 
     def world_to_screen(self, wx, wy):
         """Convert world coordinates to screen coordinates."""
@@ -104,9 +146,52 @@ class Renderer:
         self._draw_attack_beams(frame)
         self._draw_towers()
         self._draw_enemies()
+        self._draw_latch_effects()
         self._draw_wave_bonus(frame)
         self._draw_game_over()
         self._draw_camera_info()
+        self._draw_version_info()
+
+    def _draw_version_info(self):
+        """Draw version/timestamp info in top right corner."""
+        # Get current timestamp
+        now = datetime.now()
+        version_text = now.strftime("v%Y-%m-%d %H:%M")
+
+        # Render text
+        text_surface = self.font_s.render(version_text, True, self.TEXT)
+        text_rect = text_surface.get_rect()
+
+        # Position in top right corner
+        text_rect.topright = (self.WIDTH - 5, 5)
+
+        # Draw text
+        self.screen.blit(text_surface, text_rect)
+
+    def _draw_latch_effects(self):
+        """Draw assimilator latch effects."""
+        # Update swarm effects
+        self.swarm_fx.update(1.0)  # Assuming 1 frame per update
+
+        # Draw latch effects for latched assimilators
+        for enemy in self.game.enemies:
+            if hasattr(enemy, 'is_latched') and enemy.is_latched:
+                # Get assimilator position (use current position or stored latch position)
+                assim_pos = enemy.get_position()
+                if assim_pos:
+                    target_pos = getattr(enemy, 'latch_target', None)
+                    if target_pos:
+                        stack_count = getattr(enemy, 'stack_count', 1)
+                        self.swarm_fx.draw_latch(
+                            self.screen,
+                            assim_pos,
+                            target_pos,
+                            stack_count,
+                            self.world_to_screen
+                        )
+
+        # Draw all swarm effects
+        self.swarm_fx.draw(self.screen)
 
     def _draw_shop(self):
         """Draw the shop section."""
@@ -650,7 +735,7 @@ class Renderer:
         o.set_alpha(180)
         o.fill((0, 0, 0))
         self.screen.blit(o, (0, 0))
-        txt = pygame.font.SysFont("consolas", 48, bold=True).render("GAME OVER", True, (255, 80, 80))
+        txt = self.font_over.render("GAME OVER", True, (255, 80, 80))
         self.screen.blit(txt, txt.get_rect(center=(self.WIDTH//2, self.HEIGHT//2 - 60)))
         s = self.font.render(f"Wave {self.game.final_wave}   Gold {self.game.final_gold}", True, self.TEXT)
         self.screen.blit(s, s.get_rect(center=(self.WIDTH//2, self.HEIGHT//2)))

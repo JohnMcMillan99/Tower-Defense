@@ -1,0 +1,6 @@
+assimilators:
+  chance_base: 0.4      # 40% base chance to latch
+  assimilate_time: 30   # frames to full assimilate
+  stack_mult:
+    3: 1.2              # 1.2x speed at 3+ stacks
+    5: 1.5              # 1.5x speed at 5+ stacks

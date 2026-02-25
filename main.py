@@ -8,11 +8,19 @@ from ui.events import EventHandler
 # Detect web/browser mode (pygbag runs on emscripten)
 WEB_MODE = sys.platform == "emscripten"
 
+# In browser: match page background and hide "Ready to start" overlay so game canvas is visible
+if WEB_MODE:
+    import platform
+    platform.document.body.style.background = "#0a0a0f"
+    # Template hides infobox after shell.source(main), but that never runs (game loop blocks).
+    # Hide it here so the game canvas underneath is revealed when user clicks.
+    platform.window.infobox.style.display = "none"
+
 # Initialize pygame
 pygame.init()
 
 # Create game and UI components
-game = Game(web_mode=WEB_MODE)  # Pass flag for reduced load
+game = Game(web_mode=WEB_MODE)
 renderer = Renderer(game)
 handler = EventHandler(game, renderer)
 clock = pygame.time.Clock()

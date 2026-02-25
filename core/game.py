@@ -6,9 +6,11 @@ from map.path_graph import PathGraph
 from data.tiles import TILE_TYPES
 from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
+from data.loader import DataLoader
 from utils.path_generator import PathGenerator
 from .economy import EconomyManager
 from .wave_manager import WaveManager
+from .board import BoardManager
 
 
 class Direction(Enum):
@@ -74,9 +76,21 @@ class Game:
         self.shop_mode = "towers"  # "towers" or "tiles"
         self.web_mode = web_mode  # Flag for reduced load in browser
 
+        # Load YAML data
+        self.data_loader = DataLoader()
+
+        # Check for pygame availability (pygbag compatibility)
+        try:
+            import pygame
+            self.pygame_available = True
+        except ImportError:
+            self.pygame_available = False
+            print("Warning: Pygame not available, visual effects will be disabled")
+
         # Initialize managers
         self.economy = EconomyManager(self)
         self.wave_manager = WaveManager(self)
+        self.board = BoardManager(self)
 
         self.economy.generate_shop()
 
@@ -387,3 +401,11 @@ class Game:
         self.enemy_grid = new_enemy_grid
         self.width = new_width
         self.height = new_height
+
+    def integrity_tick(self):
+        """
+        Update board integrity by applying drain from latched assimilators.
+        Called each frame in wave update loop.
+        """
+        if hasattr(self, 'board') and self.board:
+            self.board.update_walls()
