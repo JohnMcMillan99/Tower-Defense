@@ -1,5 +1,6 @@
 import pygame
 import json
+from datetime import datetime
 from models.tower import Tower
 
 
@@ -107,6 +108,23 @@ class Renderer:
         self._draw_wave_bonus(frame)
         self._draw_game_over()
         self._draw_camera_info()
+        self._draw_version_info()
+
+    def _draw_version_info(self):
+        """Draw version/timestamp info in top right corner."""
+        # Get current timestamp
+        now = datetime.now()
+        version_text = now.strftime("v%Y-%m-%d %H:%M")
+
+        # Render text
+        text_surface = self.font_s.render(version_text, True, self.TEXT)
+        text_rect = text_surface.get_rect()
+
+        # Position in top right corner
+        text_rect.topright = (self.WIDTH - 5, 5)
+
+        # Draw text
+        self.screen.blit(text_surface, text_rect)
 
     def _draw_shop(self):
         """Draw the shop section."""
