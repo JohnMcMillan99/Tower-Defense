@@ -1,5 +1,6 @@
 import random
 from models.enemy import Enemy
+from models.assimilator import Assimilator
 
 
 class WaveManager:
@@ -19,7 +20,15 @@ class WaveManager:
         if self.game.round_num >= 5: types.append("Harvester")
         if self.game.round_num >= 7: types.append("Adaptor")
         if self.game.round_num >= 9: types.append("Assimilator")
-        self.game.spawn_queue = [Enemy(self.game.path, random.choice(types), self.game.round_num, web_mode=self.game.web_mode) for _ in range(wave_size)]
+        self.game.spawn_queue = []
+        for _ in range(wave_size):
+            enemy_type = random.choice(types)
+            if enemy_type == "Assimilator":
+                enemy = Assimilator(self.game.path, self.game.round_num, web_mode=self.game.web_mode)
+                enemy.set_game_reference(self.game)
+            else:
+                enemy = Enemy(self.game.path, enemy_type, self.game.round_num, web_mode=self.game.web_mode)
+            self.game.spawn_queue.append(enemy)
         # Egrem towers on grid spawn 1-2 mini-boss style enemies per wave (fewer, stronger)
         for t in self.game.towers:
             if t.base_type == "Nanite Swarm":
@@ -65,6 +74,48 @@ class WaveManager:
             if pos:
                 self.game.enemy_grid[pos[1]][pos[0]].append(e)
 
+        # Assimilator latch logic (Circuit Stronghold)
+        if hasattr(self.game, 'board') and self.game.board:
+            assim_data = self.game.data_loader.get_assimilator_data() or {}
+            base_chance = assim_data.get('chance_base', 0.4)
+
+            for e in self.game.enemies[:]:
+                if getattr(e, 'enemy_type', None) == 'Assimilator' and not getattr(e, 'is_latched', False):
+                    pos = e.get_position()
+                    if pos:
+                        ax, ay = pos
+                        tx, ty, ttype = self.game.board.scan_latch_targets(ax, ay)
+                        if tx is not None:
+                            # Check for repel AoE from pure towers
+                            repel_active = False
+                            for t in self.game.towers:
+                                if t.camouflage_repels():
+                                    # Check if assimilator is within tower's repel range
+                                    distance = abs(t.x - ax) + abs(t.y - ay)
+                                    if distance <= t.range:
+                                        repel_active = True
+                                        break
+
+                            if not repel_active:
+                                # Roll assimilate chance
+                                if random.random() < base_chance:
+                                    if e.latch_to(tx, ty, ttype, self.game.board.wall_manager):
+                                        # Update stack_count from target
+                                        if ttype == 'wall':
+                                            wall = self.game.board.wall_manager.get_wall(tx, ty)
+                                            if wall:
+                                                e.stack_count = wall.get_latch_count()
+                                        # Set game reference for tower access
+                                        e.set_game_reference(self.game)
+
+        # Update latched assimilators
+        for e in self.game.enemies[:]:
+            if getattr(e, 'is_latched', False):
+                e.update_latch(self.game.board.wall_manager)
+
+        # Integrity drain (0.02/stack)
+        self.game.integrity_tick()
+
         for e in self.game.enemies[:]:
             e.move()
             if e.leaked:
@@ -97,7 +148,11 @@ class WaveManager:
             # Find the closest path point to this position
             closest_pos = min(self.game.path, key=lambda p: abs(p[0]-x) + abs(p[1]-y))
             closest_idx = self.game.path.index(closest_pos)
-            enemy = Enemy(self.game.path[closest_idx:], enemy_type, wave_num, is_egrem_spawned=True, web_mode=self.game.web_mode)
+            if enemy_type == "Assimilator":
+                enemy = Assimilator(self.game.path[closest_idx:], wave_num, is_egrem_spawned=True, web_mode=self.game.web_mode)
+                enemy.set_game_reference(self.game)
+            else:
+                enemy = Enemy(self.game.path[closest_idx:], enemy_type, wave_num, is_egrem_spawned=True, web_mode=self.game.web_mode)
             self.game.enemies.append(enemy)
             # Add to enemy_grid immediately so towers can target it
             pos = enemy.get_position()

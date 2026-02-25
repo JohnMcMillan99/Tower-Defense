@@ -10,6 +10,7 @@ from data.loader import DataLoader
 from utils.path_generator import PathGenerator
 from .economy import EconomyManager
 from .wave_manager import WaveManager
+from .board import BoardManager
 
 
 class Direction(Enum):
@@ -89,6 +90,7 @@ class Game:
         # Initialize managers
         self.economy = EconomyManager(self)
         self.wave_manager = WaveManager(self)
+        self.board = BoardManager(self)
 
         self.economy.generate_shop()
 
@@ -399,3 +401,11 @@ class Game:
         self.enemy_grid = new_enemy_grid
         self.width = new_width
         self.height = new_height
+
+    def integrity_tick(self):
+        """
+        Update board integrity by applying drain from latched assimilators.
+        Called each frame in wave update loop.
+        """
+        if hasattr(self, 'board') and self.board:
+            self.board.update_walls()

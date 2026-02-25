@@ -15,6 +15,21 @@ meta_unlocks:
     - id: interest_1
       cost: 140
       effect: interest_cap +1
+    - id: purity_catalyst_1
+      cost: 50
+      effect: pure_path_segment_odds 0.05
+    - id: purity_catalyst_2
+      cost: 120
+      effect: pure_path_segment_odds 0.1
+    - id: purity_catalyst_3
+      cost: 180
+      effect: pure_path_segment_odds 0.15
+    - id: purity_catalyst_4
+      cost: 220
+      effect: pure_path_segment_odds 0.2
+    - id: purity_catalyst_5
+      cost: 250
+      effect: pure_path_segment_odds 0.25
   tier_2:
     - id: tower_pool_oscillator
       cost: 300
@@ -31,6 +46,21 @@ meta_unlocks:
     - id: tower_pool_diode
       cost: 340
       effect: add_tower Diode
+    - id: latch_shield_1
+      cost: 300
+      effect: latch_integrity_drain -0.1
+    - id: latch_shield_2
+      cost: 400
+      effect: latch_integrity_drain -0.2
+    - id: latch_shield_3
+      cost: 500
+      effect: latch_integrity_drain -0.3
+    - id: latch_shield_4
+      cost: 650
+      effect: latch_integrity_drain -0.4
+    - id: latch_shield_5
+      cost: 800
+      effect: latch_integrity_drain -0.5
   tier_3:
     - id: latch_resist
       cost: 500
@@ -47,3 +77,18 @@ meta_unlocks:
     - id: start_gold_2
       cost: 490
       effect: start_gold +10
+    - id: overclock_amp_1
+      cost: 1000
+      effect: overclock_aura_mult 0.2
+    - id: overclock_amp_2
+      cost: 1200
+      effect: overclock_aura_mult 0.4
+    - id: overclock_amp_3
+      cost: 1400
+      effect: overclock_aura_mult 0.6
+    - id: overclock_amp_4
+      cost: 1600
+      effect: overclock_aura_mult 0.8
+    - id: overclock_amp_5
+      cost: 1800
+      effect: overclock_aura_mult 1.0

@@ -280,11 +280,16 @@ class Tower:
         Returns:
             bool: True if tower is vulnerable to latching (hybrid), False if immune (pure)
         """
-        # Pure towers are immune to latching - currently none are pure by default
-        # This could be extended to make certain tower types (like Diode) pure
-        pure_tower_types = []  # Add tower types that should be pure/immune
+        # Check tier_traits.immune from merges.yaml data
+        if hasattr(self, 'game') and self.game and hasattr(self.game, 'data_loader'):
+            tower_data = self.game.data_loader.get_tower_data(self.base_type)
+            if tower_data and 'tier_traits' in tower_data and 'immune' in tower_data['tier_traits']:
+                immune_tiers = tower_data['tier_traits']['immune']
+                if isinstance(immune_tiers, list) and self.merge_generation in immune_tiers:
+                    return False  # Immune at this tier
 
-        return self.base_type not in pure_tower_types
+        # Default: all towers are vulnerable (hybrid) unless specified otherwise
+        return True
 
     def camouflage_repels(self):
         """
@@ -293,7 +298,8 @@ class Tower:
         Returns:
             bool: True if camouflage is active and repels assimilators
         """
-        # Camouflage is a meta-unlock that makes pure path segments repel assimilators
-        # For towers, this could be an upgrade or special ability
-        # Currently returns False - would be enabled by meta-unlocks
+        # Camouflage is a meta-unlock that makes pure towers repel assimilators
+        # Check if game has the enable_camouflage meta-unlock active
+        if hasattr(self, 'game') and self.game and hasattr(self.game, 'meta_unlocks_active'):
+            return 'enable_camouflage' in self.game.meta_unlocks_active and self.can_be_latched() is False
         return False

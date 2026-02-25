@@ -50,14 +50,8 @@ class PathWall:
 
         latch_count = self.get_latch_count()
         if latch_count > 0:
-            # Calculate drain based on stack scaling
-            if latch_count <= 2:
-                drain_per_frame = drain_rate * 2.0  # Base 2%
-            elif latch_count <= 6:
-                drain_per_frame = drain_rate * 5.0  # Stack 5%
-            else:
-                drain_per_frame = drain_rate * 10.0  # Heavy/Cap 10%+
-
+            # Drain 0.02 per stack per frame
+            drain_per_frame = drain_rate * latch_count
             self.integrity = max(0.0, self.integrity - drain_per_frame)
 
         # Apply regeneration

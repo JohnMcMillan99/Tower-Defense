@@ -340,6 +340,130 @@ class SwarmFXManager:
         for number in self.damage_numbers:
             number.draw(surface)
 
+    def draw_latch(self, surface, assimilator_pos, target_pos, stack_count, world_to_screen):
+        """
+        Draw latch tendrils and effects from assimilator to target.
+
+        Args:
+            surface: Pygame surface to draw on
+            assimilator_pos: (x, y) world position of assimilator
+            target_pos: (x, y) world position of target (wall or tower)
+            stack_count: Number of assimilators in stack
+            world_to_screen: Function to convert world coords to screen coords
+        """
+        # Convert positions to screen coordinates
+        assim_screen = world_to_screen(assimilator_pos[0], assimilator_pos[1])
+        target_screen = world_to_screen(target_pos[0], target_pos[1])
+
+        # Draw tendrils - red curved lines from assimilator to target
+        if GFXDRAW_AVAILABLE:
+            # Use pygame.gfxdraw for smoother arcs
+            self._draw_tendrils_gfxdraw(surface, assim_screen, target_screen, stack_count)
+        else:
+            # Fallback to pygame.draw
+            self._draw_tendrils_fallback(surface, assim_screen, target_screen, stack_count)
+
+        # Draw scaling circles/particles at target
+        self._draw_latch_particles(surface, target_screen, stack_count)
+
+    def _draw_tendrils_gfxdraw(self, surface, start_pos, end_pos, stack_count):
+        """Draw curved tendrils using pygame.gfxdraw.arc."""
+        start_x, start_y = start_pos
+        end_x, end_y = end_pos
+
+        # Calculate direction and distance
+        dx = end_x - start_x
+        dy = end_y - start_y
+        distance = math.sqrt(dx*dx + dy*dy)
+
+        if distance < 1:
+            return  # Too close, skip
+
+        # Number of tendrils based on stack count
+        tendril_count = min(stack_count, 4)  # Max 4 tendrils
+
+        # Red color with varying intensity
+        base_color = (255, 50, 50)
+
+        for i in range(tendril_count):
+            # Offset each tendril slightly for spread effect
+            offset_factor = (i - (tendril_count - 1) / 2) * 0.1
+            perp_x = -dy / distance * offset_factor * 20
+            perp_y = dx / distance * offset_factor * 20
+
+            # Create control points for bezier-like curve
+            mid_x = (start_x + end_x) / 2 + perp_x
+            mid_y = (start_y + end_y) / 2 + perp_y
+
+            # Draw multiple segments to approximate curve
+            segments = 8
+            for j in range(segments):
+                t1 = j / segments
+                t2 = (j + 1) / segments
+
+                # Quadratic bezier interpolation
+                x1 = (1-t1)**2 * start_x + 2*(1-t1)*t1 * mid_x + t1**2 * end_x
+                y1 = (1-t1)**2 * start_y + 2*(1-t1)*t1 * mid_y + t1**2 * end_y
+                x2 = (1-t2)**2 * start_x + 2*(1-t2)*t2 * mid_x + t2**2 * end_x
+                y2 = (1-t2)**2 * start_y + 2*(1-t2)*t2 * mid_y + t2**2 * end_y
+
+                # Draw line segment
+                pygame.gfxdraw.line(surface, int(x1), int(y1), int(x2), int(y2), base_color)
+
+    def _draw_tendrils_fallback(self, surface, start_pos, end_pos, stack_count):
+        """Fallback tendril drawing using pygame.draw."""
+        start_x, start_y = start_pos
+        end_x, end_y = end_pos
+
+        # Number of tendrils based on stack count
+        tendril_count = min(stack_count, 4)
+
+        # Red color
+        color = (255, 50, 50)
+
+        for i in range(tendril_count):
+            # Simple straight lines with slight randomization
+            offset_x = random.randint(-3, 3)
+            offset_y = random.randint(-3, 3)
+            pygame.draw.line(surface, color,
+                           (start_x + offset_x, start_y + offset_y),
+                           (end_x + offset_x, end_y + offset_y), 2)
+
+    def _draw_latch_particles(self, surface, center_pos, stack_count):
+        """Draw particle effects at latch target."""
+        center_x, center_y = center_pos
+
+        # Scale particle count and size with stack
+        particle_count = min(stack_count * 2, 20)  # Up to 20 particles
+        base_radius = 5 + stack_count  # 5 + stack for radius scaling
+
+        # Draw filled circles for dense swarm effect when stack >= 5
+        if stack_count >= 5:
+            # Outer glow circle
+            glow_color = (255, 100, 100, 100)  # Semi-transparent red
+            for r in range(base_radius + 5, base_radius - 1, -1):
+                alpha = 255 - (r - base_radius) * 20
+                color = (255, 100, 100, max(50, alpha))
+                if GFXDRAW_AVAILABLE:
+                    pygame.gfxdraw.filled_circle(surface, center_x, center_y, r, color)
+                else:
+                    pygame.draw.circle(surface, color, (center_x, center_y), r)
+
+        # Draw individual particles
+        for i in range(particle_count):
+            angle = (i / particle_count) * 2 * math.pi
+            distance = random.uniform(base_radius * 0.5, base_radius * 1.5)
+            x = center_x + math.cos(angle) * distance
+            y = center_y + math.sin(angle) * distance
+
+            size = random.uniform(1, 3)
+            color = (255, random.randint(50, 150), 50)
+
+            if GFXDRAW_AVAILABLE:
+                pygame.gfxdraw.filled_circle(surface, int(x), int(y), int(size), color)
+            else:
+                pygame.draw.circle(surface, color, (int(x), int(y)), int(size))
+
     def clear_latch_effects(self):
         """Clear all latch-related visual effects."""
         self.swarm_clusters.clear()

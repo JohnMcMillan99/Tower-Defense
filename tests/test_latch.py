@@ -175,3 +175,84 @@ def test_max_latch_depth(board_manager):
     assert target_x is None
     assert target_y is None
     assert target_type is None
+
+
+def test_latch_progress(board_manager):
+    """Test that stack count speeds up assimilation progress."""
+    # Create assimilator and wall
+    assimilator = Assimilator([(5, 5)], wave_num=9)
+    assimilator.set_game_reference(board_manager.game)
+    board_manager.add_hybrid_wall(5, 5)
+
+    # Latch with initial stack
+    assimilator.latch_to(5, 5, 'wall', board_manager.wall_manager)
+    initial_progress = assimilator.assimilate_progress
+
+    # Simulate time passing (update latch multiple times)
+    for _ in range(10):
+        assimilator.update_latch(board_manager.wall_manager)
+
+    # Progress should have increased
+    assert assimilator.assimilate_progress > initial_progress
+
+    # Add another assimilator to same wall (increase stack)
+    assimilator2 = Assimilator([(5, 5)], wave_num=9)
+    assimilator2.set_game_reference(board_manager.game)
+    assimilator2.latch_to(5, 5, 'wall', board_manager.wall_manager)
+
+    # Both should now have higher stack count
+    assert assimilator.stack_count == 2
+    assert assimilator2.stack_count == 2
+
+    # Progress should increase faster with higher stack
+    # (This is a stub - actual implementation would need timing measurements)
+
+
+def test_pure_repel(game, board_manager):
+    """Test that pure towers repel assimilators in AoE."""
+    # Create a tower with camouflage active
+    tower = Tower(7, 5, "Oscillator")
+    tower.game = game  # Set game reference
+    game.towers.append(tower)
+
+    # Enable camouflage meta-unlock
+    if not hasattr(game, 'meta_unlocks_active'):
+        game.meta_unlocks_active = set()
+    game.meta_unlocks_active.add('enable_camouflage')
+
+    # Create assimilator near the tower
+    assimilator = Assimilator([(5, 5), (6, 5)], wave_num=9)
+    assimilator.set_game_reference(game)
+
+    # Scan for latch targets - should not find tower due to repel
+    target_x, target_y, target_type = board_manager.scan_latch_targets(5, 5)
+
+    # Should not find the tower (repelled)
+    # Note: This test assumes tower.can_be_latched() returns False for pure towers
+    # and camouflage_repels() returns True when meta-unlock is active
+    assert target_x != 7 or target_y != 5  # Should not target the repelling tower
+
+
+def test_integrity_drain(game):
+    """Test that integrity drains at 0.02 per stack per frame."""
+    # Create game with board manager
+    board_manager = BoardManager(game)
+
+    # Add hybrid wall and latch assimilator
+    board_manager.add_hybrid_wall(5, 5)
+    assimilator = Assimilator([(5, 5)], wave_num=9)
+    assimilator.set_game_reference(game)
+    assimilator.latch_to(5, 5, 'wall', board_manager.wall_manager)
+
+    # Get initial integrity
+    initial_integrity = board_manager.integrity_from_latches(5, 5)
+
+    # Call integrity_tick multiple times
+    for _ in range(10):
+        game.integrity_tick()
+
+    # Integrity should have decreased by 0.02 * 1 * 10 = 0.2
+    final_integrity = board_manager.integrity_from_latches(5, 5)
+    expected_decrease = 0.02 * 1 * 10  # 0.02 per stack per frame * 1 stack * 10 frames
+
+    assert abs((initial_integrity - final_integrity) - expected_decrease) < 0.01

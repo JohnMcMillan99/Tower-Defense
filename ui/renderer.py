@@ -2,6 +2,7 @@ import pygame
 import json
 from datetime import datetime
 from models.tower import Tower
+from ui.swarm_fx import SwarmFXManager
 
 
 class Renderer:
@@ -46,6 +47,9 @@ class Renderer:
         self.font = pygame.font.SysFont("consolas", 16)
         self.font_s = pygame.font.SysFont("consolas", 12)
         self.font_merge = pygame.font.SysFont("consolas", 20)
+
+        # Swarm effects manager
+        self.swarm_fx = SwarmFXManager()
 
         # Tower colors
         self.tower_colors = {
@@ -105,6 +109,7 @@ class Renderer:
         self._draw_attack_beams(frame)
         self._draw_towers()
         self._draw_enemies()
+        self._draw_latch_effects()
         self._draw_wave_bonus(frame)
         self._draw_game_over()
         self._draw_camera_info()
@@ -125,6 +130,31 @@ class Renderer:
 
         # Draw text
         self.screen.blit(text_surface, text_rect)
+
+    def _draw_latch_effects(self):
+        """Draw assimilator latch effects."""
+        # Update swarm effects
+        self.swarm_fx.update(1.0)  # Assuming 1 frame per update
+
+        # Draw latch effects for latched assimilators
+        for enemy in self.game.enemies:
+            if hasattr(enemy, 'is_latched') and enemy.is_latched:
+                # Get assimilator position (use current position or stored latch position)
+                assim_pos = enemy.get_position()
+                if assim_pos:
+                    target_pos = getattr(enemy, 'latch_target', None)
+                    if target_pos:
+                        stack_count = getattr(enemy, 'stack_count', 1)
+                        self.swarm_fx.draw_latch(
+                            self.screen,
+                            assim_pos,
+                            target_pos,
+                            stack_count,
+                            self.world_to_screen
+                        )
+
+        # Draw all swarm effects
+        self.swarm_fx.draw(self.screen)
 
     def _draw_shop(self):
         """Draw the shop section."""

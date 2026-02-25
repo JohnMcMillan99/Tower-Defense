@@ -15,6 +15,7 @@ class DataLoader:
         self.towers = {}
         self.enemies = {}
         self.meta_unlocks = {}
+        self.assimilators = {}
         self._load_data()
 
     def _load_data(self):
@@ -54,6 +55,16 @@ class DataLoader:
             else:
                 print(f"Warning: {meta_file} not found, using fallback data")
                 self._load_fallback_meta_unlocks()
+
+            # Load assimilators data
+            assimilators_file = os.path.join(self.yaml_dir, 'assimilators.yaml')
+            if os.path.exists(assimilators_file):
+                with open(assimilators_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                    self.assimilators = data.get('assimilators', {})
+            else:
+                print(f"Warning: {assimilators_file} not found, using fallback data")
+                self._load_fallback_assimilators()
 
         except Exception as e:
             print(f"Error loading YAML data: {e}")
@@ -113,11 +124,20 @@ class DataLoader:
             ]
         }
 
+    def _load_fallback_assimilators(self):
+        """Fallback assimilator data if YAML fails to load."""
+        self.assimilators = {
+            "chance_base": 0.4,
+            "assimilate_time": 30,
+            "stack_mult": {3: 1.2, 5: 1.5}
+        }
+
     def _load_fallback_data(self):
         """Load all fallback data."""
         self._load_fallback_towers()
         self._load_fallback_enemies()
         self._load_fallback_meta_unlocks()
+        self._load_fallback_assimilators()
 
     def get_tower_data(self, tower_type):
         """Get tower data by type."""
@@ -130,6 +150,10 @@ class DataLoader:
     def get_meta_unlocks(self):
         """Get all meta unlocks."""
         return self.meta_unlocks
+
+    def get_assimilator_data(self):
+        """Get assimilator configuration data."""
+        return self.assimilators
 
     def get_tower_types(self):
         """Get list of all tower types."""
