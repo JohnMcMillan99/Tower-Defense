@@ -55,7 +55,9 @@ def test_spl_max_cap():
 
 
 def test_enemy_base_xp():
-    """Test that enemies have base_xp values."""
+    """Test that enemies have base_xp values (full mode)."""
+    # Ensure base_xp is initialized (full mode)
+    Enemy.init_for_minimal_mode(False)
     # Test all enemy types have base_xp
     for enemy_type, stats in Enemy.TYPES.items():
         assert "base_xp" in stats, f"Enemy type {enemy_type} missing base_xp"

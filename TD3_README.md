@@ -98,7 +98,7 @@ A Borg-themed tower defense roguelike with a **merge-based tower progression sys
 - Enemy path overlaid on grid; tower and enemy rendering with Borg-themed colors
 
 #### 9. **Game Flow**
-- Enemy path generated procedurally via PathGenerator (from TD3.py)
+- Enemy path generated procedurally via PathGenerator (from utils/path_generator.py)
 - Towers placed on grid interact with passing enemies
 - Tower damage calculation: `dmg = base_dmg × fire_rate`
 - Enemy pathfinding along generated path
@@ -111,19 +111,36 @@ A Borg-themed tower defense roguelike with a **merge-based tower progression sys
 ### File Structure
 ```
 Tower Defense/
-├── td_visual.py        # Main pygame app and game loop
-├── TD3.py              # PathGenerator algorithm
-├── requirements.txt    # Dependencies
+├── main.py             # Entry point (run with: python main.py or python main.py --minimal)
+├── config.py           # DEBUG flag, log_debug (set DEBUG=True for troubleshooting)
+├── requirements.txt    # Dependencies (pygame, pytest, pygbag, PyYAML)
 ├── TD3_README.md       # This file
-├── data/
-│   ├── tiles.py        # Map expansion tile definitions
-│   ├── units.py        # Tower types and traits
-│   └── upgrades.py     # Software upgrade definitions
+├── core/               # Game logic
+│   ├── game.py        # Game state and orchestration
+│   ├── economy.py     # Shop, bench, merge, egrem logic
+│   ├── wave_manager.py # Enemy spawning and wave updates
+│   └── board.py       # Wall placement, latch mechanics (Circuit Stronghold)
 ├── models/
-│   ├── enemy.py        # Enemy types and behavior
-│   └── tower.py        # Tower model with merge/upgrade logic
-└── map/
-    └── path_graph.py   # Path connectivity for tile placement
+│   ├── enemy.py       # Enemy types and behavior
+│   ├── assimilator.py # Assimilator with Swarm Latch
+│   ├── tower.py       # Tower model with merge/upgrade logic
+│   └── path_wall.py   # Path wall for latch targets
+├── ui/
+│   ├── renderer.py    # Pygame drawing and camera
+│   ├── events.py      # Input handling
+│   └── swarm_fx.py    # Swarm visual effects
+├── data/
+│   ├── loader.py      # YAML data loader (merges, enemies, meta_unlocks)
+│   ├── tiles.py       # Map expansion tile definitions
+│   ├── units.py       # Tower types and traits
+│   ├── upgrades.py    # Software upgrade definitions
+│   └── yaml/          # merges.yaml, enemies.yaml, meta_unlocks.yaml, assimilators.yaml
+├── map/
+│   └── path_graph.py  # Path connectivity for tile placement
+├── utils/
+│   └── path_generator.py  # Map path generation (canonical; TD3.py is deprecated)
+├── legacy/            # Deprecated code (td_visual.py)
+└── tests/             # Unit tests (pytest)
 ```
 
 ### Core Classes
@@ -152,20 +169,21 @@ class Enemy:
     def _calculate_stats(self)  # Scales health based on wave_num
 ```
 
-#### `Game` (td_visual.py)
+#### `Game` (core/game.py)
 - Central state manager
 - Manages shop (5 slots), tower bench (10 slots), map tile bench (3), upgrade bench (3)
-- Shop modes: `generate_shop()` for towers/tiles/upgrades
-- Merging: `select_for_merge()`, `confirm_merge()`, `cancel_merge()`, `_complete_egrem()`
-- Upgrades: `apply_upgrade_from_bench()`, `move_to_bench()` for all modes
+- Shop modes: `economy.generate_shop()` for towers/tiles/upgrades
+- Merging: `economy.select_for_merge()`, `confirm_merge()`, `cancel_merge()`, `_complete_egrem()`
+- Upgrades: `economy.apply_upgrade_from_bench()`, `move_to_bench()` for all modes
 - Map expansion: `can_place_tile()`, `place_map_tile()`, `expand_grid()`
-- Wave spawning: `start_next_wave()`, `update_wave()`
+- Wave spawning: `wave_manager.start_next_wave()`, `update_wave()`
+- Supports `--minimal` flag for reduced features (debugging/performance)
 
-#### Main Pygame Loop (lines 1056-1180+)
-- 60 FPS game loop
-- Event handling: clicks for shop/bench/grid, drag operations
-- Drawing: shop cards, bench, grid, towers (color-coded by type), enemies
-- Wave updates via `game.update_wave()`
+#### Main Pygame Loop (main.py)
+- 60 FPS game loop (async for pygbag/browser)
+- Event handling via `EventHandler` (clicks for shop/bench/grid, drag operations)
+- Drawing via `Renderer` (shop cards, bench, grid, towers, enemies)
+- Wave updates via `game.wave_manager.update_wave()`
 
 ---
 
@@ -209,7 +227,8 @@ pip install -r requirements.txt         # Install pygame
 
 #### Desktop (Local)
 ```powershell
-python main.py
+python main.py              # Full features
+python main.py --minimal    # Reduced features (debugging/performance)
 ```
 
 #### Browser (Web)
@@ -219,32 +238,9 @@ pygbag "Tower Defense"  # From parent directory of Tower Defense/
 ```
 Then open [http://localhost:8000](http://localhost:8000) in your browser and click to start the game. Note: Browser mode runs with reduced enemy counts for performance.
 
-### Project Structure (Post-Refactor)
+### Debug Logging
 
-The codebase has been modularized for better maintainability:
-
-```
-Tower-Defense/
-├── main.py                 # Entry point: initializes game and UI
-├── core/                   # Game logic
-│   ├── game.py            # Game state and orchestration
-│   ├── economy.py         # Shop, bench, merge, egrem logic
-│   └── wave_manager.py    # Enemy spawning and wave updates
-├── models/                # Entity classes (Tower, Enemy)
-├── map/                   # Path graph logic
-├── data/                  # Game constants (units, tiles, upgrades)
-├── ui/                    # User interface
-│   ├── renderer.py        # Pygame drawing and camera
-│   └── events.py          # Input handling
-├── utils/                 # Utilities
-│   └── path_generator.py  # Map path generation
-├── tests/                 # Unit tests (pytest)
-│   ├── test_tower.py
-│   ├── test_enemy.py
-│   ├── test_path.py
-│   └── test_path_sim.py
-└── requirements.txt       # Dependencies (pygame, pytest)
-```
+Set `DEBUG = True` in `config.py` to enable debug logging to `debug.log`. Useful for troubleshooting startup or rendering issues.
 
 ### Controls
 - **Shop mode toggle (T/M/U)** → Cycle towers / map tiles / upgrades

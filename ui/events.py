@@ -1,5 +1,5 @@
 import pygame
-import json
+from config import log_debug
 
 
 class EventHandler:
@@ -73,28 +73,7 @@ class EventHandler:
 
     def _handle_left_click(self, mx, my, frame):
         """Handle left mouse button clicks."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_click",
-                "timestamp": int(time.time() * 1000),
-                "location": "events.py:_handle_left_click",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "click_detection_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Left click detected", {"mouse_x": mx, "mouse_y": my})
+        log_debug("Left click detected", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_left_click")
 
         # Upgrade dialog (when open)
         if self.game.upgrade_dialog_tower is not None:
@@ -165,28 +144,7 @@ class EventHandler:
 
     def _handle_right_panel_click(self, mx, my):
         """Handle clicks in the right panel."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_right_panel_click",
-                "timestamp": int(time.time() * 1000),
-                "location": "events.py:_handle_right_panel_click",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "right_panel_coordinate_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Right panel click", {"mouse_x": mx, "mouse_y": my})
+        log_debug("Right panel click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_right_panel_click")
 
         # Calculate button positions to match the drawing code
         px = self.renderer.GRID_W + 14
@@ -198,7 +156,7 @@ class EventHandler:
         py += 24  # Wave
 
         # SPL/XP UI spacing (same as drawing)
-        if hasattr(self.game, 'feature_level') and self.game.feature_level >= 10:
+        if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'shop_power_level'):
             py += 24  # SPL
             py += 12 + 4 + 20  # XP bar + text
 
@@ -207,61 +165,40 @@ class EventHandler:
 
         # Play/Pause button
         play_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Play button rect", {"x": px, "y": py, "w": 100, "h": 26})
+        log_debug("Play button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
         py += 32
 
         # Next Wave button
         next_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Next Wave button rect", {"x": px, "y": py, "w": 100, "h": 26})
+        log_debug("Next Wave button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
         py += 32
 
         # Auto toggle button
         auto_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Auto button rect", {"x": px, "y": py, "w": 100, "h": 26})
+        log_debug("Auto button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
 
         if play_rect.collidepoint(mx, my):
-            log_debug("Play/Pause button clicked")
+            log_debug("Play/Pause button clicked", location="events.py:_handle_right_panel_click")
             self.game.paused = not self.game.paused
         elif next_rect.collidepoint(mx, my):
-            log_debug("Next Wave button clicked")
+            log_debug("Next Wave button clicked", location="events.py:_handle_right_panel_click")
             self.game.wave_manager.start_next_wave()
         elif auto_rect.collidepoint(mx, my):
-            log_debug("Auto button clicked")
+            log_debug("Auto button clicked", location="events.py:_handle_right_panel_click")
             self.game.auto_mode = not self.game.auto_mode
         else:
-            log_debug("No button clicked")
+            log_debug("No button clicked", location="events.py:_handle_right_panel_click")
 
     def _handle_shop_click(self, mx, my):
         """Handle clicks in the shop."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_shop_click",
-                "timestamp": int(time.time() * 1000),
-                "location": "events.py:_handle_shop_click",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "shop_toggle_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Shop click", {"mouse_x": mx, "mouse_y": my})
+        log_debug("Shop click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_shop_click")
 
         # Shop mode toggle
         tx = 15 + 400
         ty = 15
-        log_debug("Shop toggle check", {"toggle_x": tx, "toggle_y": ty, "toggle_w": 35, "toggle_h": 35})
+        log_debug("Shop toggle check", {"toggle_x": tx, "toggle_y": ty, "toggle_w": 35, "toggle_h": 35}, location="events.py:_handle_shop_click")
         if tx <= mx <= tx + 35 and ty <= my <= ty + 35:
-            log_debug("Shop toggle clicked")
+            log_debug("Shop toggle clicked", location="events.py:_handle_shop_click")
             if self.game.shop_mode == "towers":
                 self.game.shop_mode = "tiles"
             elif self.game.shop_mode == "tiles":
@@ -351,43 +288,22 @@ class EventHandler:
 
     def _handle_upgrade_bench_click(self, mx, my):
         """Handle clicks in the upgrade bench."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_upgrade_click",
-                "timestamp": int(time.time() * 1000),
-                "location": "events.py:_handle_upgrade_bench_click",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "upgrade_bench_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Upgrade bench click", {"mouse_x": mx, "mouse_y": my})
+        log_debug("Upgrade bench click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_upgrade_bench_click")
         # Calculate positions the same way as drawing code
         upgrade_bench_x = self.renderer.GRID_W + 10
         upgrade_bench_y = self.renderer.HEIGHT - 100
-        log_debug("Upgrade bench bounds", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y})
+        log_debug("Upgrade bench bounds", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y}, location="events.py:_handle_upgrade_bench_click")
 
         for i in range(3):
             x = upgrade_bench_x + i * 55
             y = upgrade_bench_y
-            log_debug(f"Checking upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80})
+            log_debug(f"Checking upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80}, location="events.py:_handle_upgrade_bench_click")
             if x <= mx <= x+50 and y <= my <= y+80:
-                log_debug(f"Upgrade slot {i} clicked")
+                log_debug(f"Upgrade slot {i} clicked", location="events.py:_handle_upgrade_bench_click")
                 self.game.selected_upgrade = i if self.game.selected_upgrade != i else None
                 return
 
-        log_debug("No upgrade slot clicked")
+        log_debug("No upgrade slot clicked", location="events.py:_handle_upgrade_bench_click")
 
     def _handle_grid_click(self, mx, my, frame):
         """Handle clicks on the game grid."""

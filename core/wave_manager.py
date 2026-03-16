@@ -125,8 +125,8 @@ class WaveManager:
             if not e.alive:
                 gold = max(1, (3 + e.difficulty * 3) // 2)  # scaled back ~half
                 self.game.gold += gold
-                # Add XP for enemy kill (feature level 5+)
-                if hasattr(self.game, 'feature_level') and self.game.feature_level >= 5:
+                # Add XP for enemy kill (full mode only)
+                if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'xp'):
                     base_xp = e.TYPES[e.enemy_type].get("base_xp", 5)
                     self.game.xp += base_xp * e.difficulty
                 self.game.enemies.remove(e)
@@ -138,15 +138,15 @@ class WaveManager:
         if self.game.wave_active and not self.game.enemies and not self.game.spawn_queue:
             bonus = (len(self.game.towers) * 3 + self.game.round_num * 4) // 2   # scaled back ~half
             self.game.gold += bonus
-            # Add XP bonus for wave clear (feature level 5+)
-            if hasattr(self.game, 'feature_level') and self.game.feature_level >= 5:
+            # Add XP bonus for wave clear (full mode only)
+            if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'xp'):
                 self.game.xp += self.game.round_num * 50
             self.game.wave_bonus_text = f"+{bonus} bonus"
             self.game.wave_bonus_show_until = frame + 240
             self.game.round_num += 1
             self.game.wave_active = False
-            # Check for SPL level up (feature level 4+)
-            if hasattr(self.game, 'feature_level') and self.game.feature_level >= 4:
+            # Check for SPL level up (full mode only)
+            if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'check_spl_level_up'):
                 self.game.check_spl_level_up()
             # Auto-start next wave if auto mode is enabled
             if self.game.auto_mode:

@@ -2,8 +2,8 @@
 # SHOP TILE TYPES (Map Expansion)
 # ==============================
 
-def get_tile_types(feature_level=10):
-    """Get tile types based on feature level."""
+def get_tile_types(minimal_mode=False):
+    """Get tile types. minimal_mode=True returns only basic tiles; False returns all variants."""
     base_tiles = [
         {
             "name": "Straight",
@@ -43,8 +43,8 @@ def get_tile_types(feature_level=10):
         },
     ]
 
-    # Add new tile variants at feature level 7+
-    if feature_level >= 7:
+    # Add new tile variants in full mode
+    if not minimal_mode:
         base_tiles.extend([
             {
                 "name": "Long Straight",
@@ -68,5 +68,5 @@ def get_tile_types(feature_level=10):
 
     return base_tiles
 
-# Default TILE_TYPES for backward compatibility
-TILE_TYPES = get_tile_types()
+# Default TILE_TYPES for backward compatibility (full mode)
+TILE_TYPES = get_tile_types(minimal_mode=False)

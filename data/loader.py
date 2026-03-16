@@ -71,29 +71,29 @@ class DataLoader:
             self._load_fallback_data()
 
     def _load_fallback_towers(self):
-        """Fallback tower data if YAML fails to load."""
+        """Fallback tower data if YAML fails to load (Borg-themed names)."""
         self.towers = {
-            "Oscillator": {
+            "Neural Processor": {
                 "dmg": 6, "range": 2, "fire_rate": 1, "fire_type": "TargetBeam",
                 "traits": ["switch", "logic"], "base_cost": 3
             },
-            "Resistor": {
+            "Plasma Capacitor": {
                 "dmg": 10, "range": 2, "fire_rate": 4, "fire_type": "Ball",
                 "traits": ["charge", "burst"], "base_cost": 4
             },
-            "Capacitor": {
+            "Thermal Regulator": {
                 "dmg": 4, "range": 3, "fire_rate": 2, "fire_type": "DirectionalBeam",
                 "traits": ["resist", "heat"], "base_cost": 3
             },
-            "Inductor": {
+            "Signal Router": {
                 "dmg": 7, "range": 4, "fire_rate": 2, "fire_type": "Track",
                 "traits": ["block", "flow"], "base_cost": 4
             },
-            "Diode": {
+            "Quantum Field Gen": {
                 "dmg": 2, "range": 99, "fire_rate": 10, "fire_type": "Overwatch",
                 "traits": ["filter", "magnetic"], "base_cost": 5
             },
-            "Transistor": {
+            "Nanite Swarm": {
                 "dmg": 0, "range": 0, "fire_rate": 0, "fire_type": "Spawner",
                 "traits": ["egrem", "spawner"], "base_cost": 6
             }
@@ -117,7 +117,7 @@ class DataLoader:
                 {"id": "reroll_cheap", "cost": 150, "effect": "reroll_cost 1"}
             ],
             "tier_2": [
-                {"id": "tower_pool_oscillator", "cost": 300, "effect": "add_tower Oscillator"}
+                {"id": "tower_pool_neural_processor", "cost": 300, "effect": "add_tower Neural Processor"}
             ],
             "tier_3": [
                 {"id": "latch_resist", "cost": 500, "effect": "latch_integrity_drain -0.1"}

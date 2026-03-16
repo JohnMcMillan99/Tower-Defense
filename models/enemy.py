@@ -10,10 +10,10 @@ class Enemy:
         "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
     }
 
-    # Add base_xp if feature level 3+
+    # Add base_xp when not in minimal mode
     @classmethod
-    def init_for_feature_level(cls, feature_level):
-        if feature_level >= 3:
+    def init_for_minimal_mode(cls, minimal_mode):
+        if not minimal_mode:
             cls.TYPES["Drone"]["base_xp"] = 5
             cls.TYPES["Scout"]["base_xp"] = 5
             cls.TYPES["Harvester"]["base_xp"] = 10

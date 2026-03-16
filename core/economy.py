@@ -17,12 +17,12 @@ class EconomyManager:
                     cost = next(u["base_cost"] for u in UNIT_TYPES if u["name"] == typ)
                     self.game.shop[i] = {"type": typ, "cost": cost}
                 elif self.game.shop_mode == "tiles":
-                    # Get available tiles based on feature level
-                    feature_level = getattr(self.game, 'feature_level', 10)
-                    available_tile_types = get_tile_types(feature_level)
+                    # Get available tiles based on minimal mode
+                    minimal_mode = getattr(self.game, 'minimal_mode', False)
+                    available_tile_types = get_tile_types(minimal_mode)
 
-                    # SPL filtering enabled at feature level 6+
-                    if feature_level >= 6:
+                    # SPL filtering enabled in full mode (when shop_power_level exists)
+                    if not minimal_mode and hasattr(self.game, 'shop_power_level'):
                         # Filter tiles by unlock level and weight by SPL
                         available_tiles = [t for t in available_tile_types if t.get("unlock_level", 1) <= self.game.shop_power_level]
                         if available_tiles:

@@ -8,6 +8,7 @@ from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
 from data.loader import DataLoader
 from utils.path_generator import PathGenerator
+from config import log_debug
 from .economy import EconomyManager
 from .wave_manager import WaveManager
 from .board import BoardManager
@@ -21,27 +22,8 @@ class Direction(Enum):
 
 
 class Game:
-    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, feature_level=10):
-        def log_debug(msg, data=None):
-            import json
-            import time
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_game_init",
-                "timestamp": int(time.time() * 1000),
-                "location": "game.py:__init__",
-                "message": msg,
-                "data": data or {},
-                "runId": "init_debug",
-                "hypothesisId": "init_failure"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-
-        log_debug("Game.__init__ start", {"height": height, "width": width, "web_mode": web_mode, "feature_level": feature_level})
+    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, minimal_mode=False):
+        log_debug("Game.__init__ start", {"height": height, "width": width, "web_mode": web_mode, "minimal_mode": minimal_mode}, location="game.py")
 
         # Core playable area (center of expanded grid)
         self.core_height = height
@@ -50,19 +32,19 @@ class Game:
         self.border_size = 4
         self.height = height + 2 * self.border_size
         self.width = width + 2 * self.border_size
-        log_debug("Grid dimensions set", {"core_height": self.core_height, "core_width": self.core_width, "height": self.height, "width": self.width})
+        log_debug("Grid dimensions set", {"core_height": self.core_height, "core_width": self.core_width, "height": self.height, "width": self.width}, location="game.py")
 
         self.grid = [["." for _ in range(self.width)] for _ in range(self.height)]
-        log_debug("Grid initialized")
+        log_debug("Grid initialized", location="game.py")
 
         self.path_graph = PathGraph()
-        log_debug("PathGraph initialized")
+        log_debug("PathGraph initialized", location="game.py")
 
         self.path_gen = PathGenerator(self.core_height, self.core_width)
-        log_debug("PathGenerator initialized")
+        log_debug("PathGenerator initialized", location="game.py")
 
         self.regenerate_map(min_path_len)
-        log_debug("Map regenerated")
+        log_debug("Map regenerated", location="game.py")
         self.enemies = []
         self.enemy_grid = [[[] for _ in range(self.width)] for _ in range(self.height)]
         self.towers = []
@@ -77,7 +59,7 @@ class Game:
         self.map_tile_bench = [None] * 3  # Separate bench for map tiles (increased size)
         self.upgrade_bench = [None] * 3  # Upgrade bench - stores upgrade IDs
         self.selected_tower = None
-        log_debug("Shop and bench initialized")
+        log_debug("Shop and bench initialized", location="game.py")
         self.selected_map_tile = None  # Selected tile from map bench
         self.selected_upgrade = None  # Selected upgrade from upgrade bench
         self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
@@ -106,55 +88,53 @@ class Game:
         self.auto_mode = False  # Auto wave toggle
         self.shop_mode = "towers"  # "towers" or "tiles"
         self.web_mode = web_mode  # Flag for reduced load in browser
-        self.feature_level = feature_level  # Feature toggle level (1-10)
-        log_debug("Feature level set", {"feature_level": feature_level})
+        self.minimal_mode = minimal_mode  # True = reduced features for debugging/performance
 
-        # Shop Power Level and XP system (enabled at level 2+)
-        if feature_level >= 2:
+        # Shop Power Level and XP system (disabled in minimal mode)
+        if not minimal_mode:
             self.shop_power_level = 1
             self.xp = 0
             self.xp_to_next = 100
             self.spl_max = 10
-            log_debug("SPL/XP system initialized")
+            log_debug("SPL/XP system initialized", location="game.py")
 
         # Load YAML data
-        log_debug("Loading YAML data")
+        log_debug("Loading YAML data", location="game.py")
         self.data_loader = DataLoader()
-        log_debug("YAML data loaded")
+        log_debug("YAML data loaded", location="game.py")
 
-        # Initialize enemy base_xp if feature level allows
-        log_debug("Initializing enemy base_xp")
-        from models.enemy import Enemy
-        Enemy.init_for_feature_level(feature_level)
-        log_debug("Enemy base_xp initialized")
+        # Initialize enemy base_xp (disabled in minimal mode)
+        log_debug("Initializing enemy base_xp", location="game.py")
+        Enemy.init_for_minimal_mode(minimal_mode)
+        log_debug("Enemy base_xp initialized", location="game.py")
 
         # Check for pygame availability (pygbag compatibility)
-        log_debug("Checking pygame availability")
+        log_debug("Checking pygame availability", location="game.py")
         try:
             import pygame
             self.pygame_available = True
-            log_debug("Pygame available")
+            log_debug("Pygame available", location="game.py")
         except ImportError:
             self.pygame_available = False
-            log_debug("Pygame not available")
+            log_debug("Pygame not available", location="game.py")
             print("Warning: Pygame not available, visual effects will be disabled")
 
         # Initialize managers
-        log_debug("Initializing managers")
+        log_debug("Initializing managers", location="game.py")
         self.economy = EconomyManager(self)
-        log_debug("EconomyManager initialized")
+        log_debug("EconomyManager initialized", location="game.py")
 
         self.wave_manager = WaveManager(self)
-        log_debug("WaveManager initialized")
+        log_debug("WaveManager initialized", location="game.py")
 
         self.board = BoardManager(self)
-        log_debug("BoardManager initialized")
+        log_debug("BoardManager initialized", location="game.py")
 
-        log_debug("Generating initial shop")
+        log_debug("Generating initial shop", location="game.py")
         self.economy.generate_shop()
-        log_debug("Initial shop generated")
+        log_debug("Initial shop generated", location="game.py")
 
-        log_debug("Game.__init__ complete")
+        log_debug("Game.__init__ complete", location="game.py")
 
     def regenerate_map(self, min_len):
         while True:
@@ -367,7 +347,10 @@ class Game:
             self.path_graph.set_end(new_end)
 
         # Recompute ordered path (start to new end)
-        self.path = self.path_graph.get_ordered_path()
+        # Mutate in place so enemies/spawn_queue (which hold path refs) see the update
+        new_path = self.path_graph.get_ordered_path()
+        self.path.clear()
+        self.path.extend(new_path)
         tile_placement_log("place_map_tile_path_updated", {"new_path_length": len(self.path), "new_end": new_end})
 
         # Mark grid cells
@@ -413,8 +396,10 @@ class Game:
 
         # Update coordinates if expanding west/north
         if expand_west or expand_north:
-            # Shift all path coordinates
-            self.path = [(x + offset_x, y + offset_y) for x, y in self.path]
+            # Mutate path in place so enemies/spawn_queue (which hold path refs) see the update
+            for i in range(len(self.path)):
+                x, y = self.path[i]
+                self.path[i] = (x + offset_x, y + offset_y)
 
             # Update path graph
             self.path_graph = PathGraph()

@@ -4,32 +4,12 @@ import json
 from datetime import datetime
 from models.tower import Tower
 from ui.swarm_fx import SwarmFXManager
+from config import log_debug
 
 
 class Renderer:
     def __init__(self, game):
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_renderer_init",
-                "timestamp": int(time.time() * 1000),
-                "location": "renderer.py:__init__",
-                "message": msg,
-                "data": data or {},
-                "runId": "black_screen_debug",
-                "hypothesisId": "renderer_init_failure"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Renderer.__init__ start")
+        log_debug("Renderer.__init__ start", location="renderer.py")
         self.game = game
 
         # Layout constants
@@ -69,9 +49,9 @@ class Renderer:
         self.TEXT = (220, 220, 220)
 
         # Fonts (use bundled TTF in web - Font(None) can fail in wasm)
-        log_debug("Font initialization start", {"web_mode": getattr(game, "web_mode", False)})
+        log_debug("Font initialization start", {"web_mode": getattr(game, "web_mode", False)}, location="renderer.py")
         if getattr(game, "web_mode", False):
-            log_debug("Web mode font loading")
+            log_debug("Web mode font loading", location="renderer.py")
             font_path = None
             for candidate in [
                 os.path.join(os.path.dirname(__file__), "..", "freesansbold.ttf"),
@@ -84,32 +64,32 @@ class Renderer:
                     break
             try:
                 if font_path:
-                    log_debug("Loading fonts from file", {"font_path": font_path})
+                    log_debug("Loading fonts from file", {"font_path": font_path}, location="renderer.py")
                     self.font = pygame.font.Font(font_path, 16)
                     self.font_s = pygame.font.Font(font_path, 12)
                     self.font_merge = pygame.font.Font(font_path, 20)
                     self.font_over = pygame.font.Font(font_path, 48)
-                    log_debug("File fonts loaded successfully")
+                    log_debug("File fonts loaded successfully", location="renderer.py")
                 else:
                     raise FileNotFoundError("freesansbold.ttf")
             except Exception as e:
-                log_debug("File font loading failed, using default fonts", {"error": str(e)})
+                log_debug("File font loading failed, using default fonts", {"error": str(e)}, location="renderer.py")
                 self.font = pygame.font.Font(None, 16)
                 self.font_s = pygame.font.Font(None, 12)
                 self.font_merge = pygame.font.Font(None, 20)
                 self.font_over = pygame.font.Font(None, 48)
         else:
-            log_debug("System font loading")
+            log_debug("System font loading", location="renderer.py")
             try:
                 self.font = pygame.font.SysFont("consolas", 16)
                 self.font_s = pygame.font.SysFont("consolas", 12)
                 self.font_merge = pygame.font.SysFont("consolas", 20)
                 self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
-                log_debug("System fonts loaded successfully")
+                log_debug("System fonts loaded successfully", location="renderer.py")
             except Exception as e:
-                log_debug("System font loading failed", {"error": str(e)})
+                log_debug("System font loading failed", {"error": str(e)}, location="renderer.py")
 
-        log_debug("Renderer initialization complete")
+        log_debug("Renderer initialization complete", location="renderer.py")
 
         # Swarm effects manager
         self.swarm_fx = SwarmFXManager()
@@ -129,37 +109,34 @@ class Renderer:
         self.map_bench_x = 15
         self.map_bench_y = self.HEIGHT - 100
 
-        log_debug("Initializing pygame display", {
-            "width": self.WIDTH,
-            "height": self.HEIGHT
-        })
+        log_debug("Initializing pygame display", {"width": self.WIDTH, "height": self.HEIGHT}, location="renderer.py")
 
         # Initialize screen
-        log_debug("Creating pygame display", {"width": self.WIDTH, "height": self.HEIGHT})
+        log_debug("Creating pygame display", {"width": self.WIDTH, "height": self.HEIGHT}, location="renderer.py")
         try:
             self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
             pygame.display.set_caption("Borg TD Prototype")
-            log_debug("Display created successfully", {"surface_size": self.screen.get_size()})
+            log_debug("Display created successfully", {"surface_size": self.screen.get_size()}, location="renderer.py")
         except Exception as e:
-            log_debug("Display creation failed", {"error": str(e)})
+            log_debug("Display creation failed", {"error": str(e)}, location="renderer.py")
 
         # Initialize fonts
-        log_debug("Initializing fonts")
+        log_debug("Initializing fonts", location="renderer.py")
         if getattr(game, "web_mode", False):
-            log_debug("Web mode detected, loading fonts")
+            log_debug("Web mode detected, loading fonts", location="renderer.py")
             # ... existing font loading code ...
         else:
-            log_debug("Native mode, loading system fonts")
+            log_debug("Native mode, loading system fonts", location="renderer.py")
             try:
                 self.font = pygame.font.SysFont("consolas", 16)
                 self.font_s = pygame.font.SysFont("consolas", 12)
                 self.font_merge = pygame.font.SysFont("consolas", 20)
                 self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
-                log_debug("System fonts loaded successfully")
+                log_debug("System fonts loaded successfully", location="renderer.py")
             except Exception as e:
-                log_debug("System font loading failed", {"error": str(e)})
+                log_debug("System font loading failed", {"error": str(e)}, location="renderer.py")
 
-        log_debug("Renderer initialization complete")
+        log_debug("Renderer initialization complete", location="renderer.py")
 
     def _draw_tier_effects(self, rect, tier):
         """Draw tier-based visual effects on a card/tower."""
@@ -260,35 +237,14 @@ class Renderer:
 
     def draw(self, frame):
         """Main drawing function."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_draw",
-                "timestamp": int(time.time() * 1000),
-                "location": "renderer.py:draw",
-                "message": msg,
-                "data": data or {},
-                "runId": "black_screen_debug",
-                "hypothesisId": "draw_method_failure"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        if frame <= 3:  # Only log first 3 frames
-            log_debug(f"Draw method called for frame {frame}")
+        if frame <= 3:
+            log_debug(f"Draw method called for frame {frame}", location="renderer.py:draw")
         try:
             self.screen.fill(self.BLACK)
             if frame <= 3:
-                log_debug("Screen filled with black")
+                log_debug("Screen filled with black", location="renderer.py:draw")
         except Exception as e:
-            log_debug("Screen fill failed", {"error": str(e)})
+            log_debug("Screen fill failed", {"error": str(e)}, location="renderer.py:draw")
 
         self._draw_shop()
         self._draw_bench(frame)
@@ -396,28 +352,7 @@ class Renderer:
         # Shop mode toggle (moved above refresh button)
         tx = 15 + 400
         ty = 15
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_ui_render",
-                "timestamp": int(time.time() * 1000),
-                "location": "renderer.py:_draw_shop",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "ui_position_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
-        log_debug("Drawing shop toggle", {"x": tx, "y": ty, "width": 35, "height": 35, "mode": self.game.shop_mode})
+        log_debug("Drawing shop toggle", {"x": tx, "y": ty, "width": 35, "height": 35, "mode": self.game.shop_mode}, location="renderer.py:_draw_shop")
         pygame.draw.rect(self.screen, self.CARD_BG, (tx, ty, 35, 35))
         pygame.draw.rect(self.screen, self.TEXT, (tx, ty, 35, 35), 1)
         mode_char = "T" if self.game.shop_mode == "towers" else ("M" if self.game.shop_mode == "tiles" else "U")
@@ -453,8 +388,8 @@ class Renderer:
             pygame.draw.rect(self.screen, self.TEXT, (x, y, 60, 90), 2)
             if self.game.bench[i]:
                 t = self.game.bench[i]
-                # Apply tier visual effects (feature level 8+)
-                if hasattr(self.game, 'feature_level') and self.game.feature_level >= 8:
+                # Apply tier visual effects (full mode only)
+                if not getattr(self.game, 'minimal_mode', True):
                     card_rect = pygame.Rect(x, y, 60, 90)
                     self._draw_tier_effects(card_rect, t.get_merge_tier())
 
@@ -504,30 +439,9 @@ class Renderer:
 
     def _draw_upgrade_bench(self):
         """Draw the upgrade bench."""
-        # #region agent log
-        import json
-        import time
-        def log_debug(msg, data=None):
-            log_entry = {
-                "sessionId": "b53f80",
-                "id": f"log_{int(time.time()*1000)}_upgrade_render",
-                "timestamp": int(time.time() * 1000),
-                "location": "renderer.py:_draw_upgrade_bench",
-                "message": msg,
-                "data": data or {},
-                "runId": "click_debug",
-                "hypothesisId": "upgrade_bench_render_mismatch"
-            }
-            try:
-                with open("debug-b53f80.log", "a") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except:
-                pass
-        # #endregion
-
         upgrade_bench_x = self.GRID_W + 10
         upgrade_bench_y = self.HEIGHT - 100
-        log_debug("Drawing upgrade bench", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y})
+        log_debug("Drawing upgrade bench", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y}, location="renderer.py:_draw_upgrade_bench")
 
         pygame.draw.rect(self.screen, self.SHOP_BG, (self.GRID_W, upgrade_bench_y - 10, self.PANEL_RIGHT_W, 100))
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, upgrade_bench_y - 10), (self.WIDTH, upgrade_bench_y - 10), 2)
@@ -536,7 +450,7 @@ class Renderer:
         for i in range(3):
             x = upgrade_bench_x + i * 55
             y = upgrade_bench_y
-            log_debug(f"Drawing upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80})
+            log_debug(f"Drawing upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80}, location="renderer.py:_draw_upgrade_bench")
             col = self.CARD_EMP if self.game.upgrade_bench[i] is None else self.CARD_BG
             if i == self.game.selected_upgrade:
                 col = self.CARD_SEL
@@ -645,8 +559,8 @@ class Renderer:
         self.screen.blit(self.font.render(f"Wave:  {self.game.round_num}", True, self.TEXT), (px, py))
         py += 24
 
-        # SPL/XP UI (feature level 10+)
-        if hasattr(self.game, 'feature_level') and self.game.feature_level >= 10:
+        # SPL/XP UI (full mode only)
+        if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'shop_power_level'):
             self.screen.blit(self.font.render(f"SPL:   {self.game.shop_power_level}", True, self.TEXT), (px, py))
             py += 24
 
@@ -971,8 +885,8 @@ class Renderer:
                 ex, ey = pos
                 exx, eyy = self.world_to_screen(ex, ey)
                 c = (exx + 20 * self.zoom_level, eyy + 20 * self.zoom_level)
-                # Enemy visuals (feature level 9+: black base with green accents)
-                if hasattr(self.game, 'feature_level') and self.game.feature_level >= 9:
+                # Enemy visuals (full mode: black base with green accents)
+                if not getattr(self.game, 'minimal_mode', True):
                     # Black base for all enemies
                     base_color = (0, 0, 0)
                     pygame.draw.circle(self.screen, base_color, c, max(5, int(13 * self.zoom_level)))
