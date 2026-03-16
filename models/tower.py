@@ -84,6 +84,14 @@ class Tower:
     def get_merge_tier(self):
         return self.merge_generation
 
+    def get_merge_type(self):
+        """Returns 'egrem' | 'pure' | 'hybrid' | 'base' for visual styling."""
+        if self.base_type == "Nanite Swarm":
+            return "egrem"
+        if self.merge_generation < 1:
+            return "base"
+        return "pure" if len(set(self.parents)) == 1 else "hybrid"
+
     @staticmethod
     def merge_towers(tower1, tower2):
         new_tower = Tower(0, 0, tower_type=tower1.base_type)

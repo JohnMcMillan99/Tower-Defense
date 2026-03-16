@@ -1,7 +1,7 @@
 import random
 from models.tower import Tower
 from data.units import UNIT_TYPES
-from data.tiles import TILE_TYPES
+from data.tiles import get_tile_types
 from data.upgrades import UPGRADE_DEFS
 
 
@@ -17,8 +17,32 @@ class EconomyManager:
                     cost = next(u["base_cost"] for u in UNIT_TYPES if u["name"] == typ)
                     self.game.shop[i] = {"type": typ, "cost": cost}
                 elif self.game.shop_mode == "tiles":
-                    tile = random.choice(TILE_TYPES)
-                    self.game.shop[i] = {"type": tile["name"], "cost": tile["base_cost"], "tile_data": tile}
+                    # Get available tiles based on minimal mode
+                    minimal_mode = getattr(self.game, 'minimal_mode', False)
+                    available_tile_types = get_tile_types(minimal_mode)
+
+                    # SPL filtering enabled in full mode (when shop_power_level exists)
+                    if not minimal_mode and hasattr(self.game, 'shop_power_level'):
+                        # Filter tiles by unlock level and weight by SPL
+                        available_tiles = [t for t in available_tile_types if t.get("unlock_level", 1) <= self.game.shop_power_level]
+                        if available_tiles:
+                            # Weight rare tiles higher at higher SPL
+                            weights = [1.0 + (t.get("unlock_level", 1) - 1) * 0.5 for t in available_tiles]
+                            tile = random.choices(available_tiles, weights=weights, k=1)[0]
+                            # Scale cost for advanced tiles
+                            base_cost = tile["base_cost"]
+                            unlock_level = tile.get("unlock_level", 1)
+                            scaled_cost = base_cost + (unlock_level - 1) * 5
+                            self.game.shop[i] = {"type": tile["name"], "cost": scaled_cost, "tile_data": tile}
+                        else:
+                            # Fallback to basic tiles
+                            basic_tiles = [t for t in available_tile_types if t.get("unlock_level", 1) == 1]
+                            tile = random.choice(basic_tiles) if basic_tiles else available_tile_types[0]
+                            self.game.shop[i] = {"type": tile["name"], "cost": tile["base_cost"], "tile_data": tile}
+                    else:
+                        # Basic tile selection (pre-SPL system)
+                        tile = random.choice(available_tile_types)
+                        self.game.shop[i] = {"type": tile["name"], "cost": tile["base_cost"], "tile_data": tile}
                 elif self.game.shop_mode == "upgrades":
                     upgrade_id = random.choice(list(UPGRADE_DEFS.keys()))
                     u = UPGRADE_DEFS[upgrade_id]

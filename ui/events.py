@@ -1,5 +1,5 @@
 import pygame
-import json
+from config import log_debug
 
 
 class EventHandler:
@@ -73,6 +73,8 @@ class EventHandler:
 
     def _handle_left_click(self, mx, my, frame):
         """Handle left mouse button clicks."""
+        log_debug("Left click detected", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_left_click")
+
         # Upgrade dialog (when open)
         if self.game.upgrade_dialog_tower is not None:
             self._handle_upgrade_dialog_click(mx, my)
@@ -93,10 +95,9 @@ class EventHandler:
             self._handle_bench_click(mx, my, frame)
             return
 
-        # Map Tile Bench (includes shop mode toggle) - only when in bench x-range
-        map_bench_right = self.renderer.map_bench_x + 3 * 80 + 20 + 35  # includes T/M/U toggle
+        # Map Tile Bench - only when in bench y-range and x-range
         if (my >= self.renderer.map_bench_y and my < self.renderer.map_bench_y + 80
-                and mx < map_bench_right):
+                and mx >= self.renderer.map_bench_x and mx < self.renderer.map_bench_x + 3 * 80):
             self._handle_map_bench_click(mx, my)
             return
 
@@ -143,19 +144,71 @@ class EventHandler:
 
     def _handle_right_panel_click(self, mx, my):
         """Handle clicks in the right panel."""
-        play_rect = pygame.Rect(self.renderer.GRID_W + 14, 96, 100, 26)
-        next_rect = pygame.Rect(self.renderer.GRID_W + 14, 128, 100, 26)
-        auto_rect = pygame.Rect(self.renderer.GRID_W + 14, 160, 100, 26)
+        log_debug("Right panel click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_right_panel_click")
+
+        # Calculate button positions to match the drawing code
+        px = self.renderer.GRID_W + 14
+        py = 18  # Starting Y position (same as drawing code)
+
+        # Basic stats spacing (same as drawing)
+        py += 24  # Gold
+        py += 24  # Lives
+        py += 24  # Wave
+
+        # SPL/XP UI spacing (same as drawing)
+        if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'shop_power_level'):
+            py += 24  # SPL
+            py += 12 + 4 + 20  # XP bar + text
+
+        # Button spacing (same as drawing)
+        py += 8  # Spacing before buttons
+
+        # Play/Pause button
+        play_rect = pygame.Rect(px, py, 100, 26)
+        log_debug("Play button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
+        py += 32
+
+        # Next Wave button
+        next_rect = pygame.Rect(px, py, 100, 26)
+        log_debug("Next Wave button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
+        py += 32
+
+        # Auto toggle button
+        auto_rect = pygame.Rect(px, py, 100, 26)
+        log_debug("Auto button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
 
         if play_rect.collidepoint(mx, my):
+            log_debug("Play/Pause button clicked", location="events.py:_handle_right_panel_click")
             self.game.paused = not self.game.paused
         elif next_rect.collidepoint(mx, my):
+            log_debug("Next Wave button clicked", location="events.py:_handle_right_panel_click")
             self.game.wave_manager.start_next_wave()
         elif auto_rect.collidepoint(mx, my):
+            log_debug("Auto button clicked", location="events.py:_handle_right_panel_click")
             self.game.auto_mode = not self.game.auto_mode
+        else:
+            log_debug("No button clicked", location="events.py:_handle_right_panel_click")
 
     def _handle_shop_click(self, mx, my):
         """Handle clicks in the shop."""
+        log_debug("Shop click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_shop_click")
+
+        # Shop mode toggle
+        tx = 15 + 400
+        ty = 15
+        log_debug("Shop toggle check", {"toggle_x": tx, "toggle_y": ty, "toggle_w": 35, "toggle_h": 35}, location="events.py:_handle_shop_click")
+        if tx <= mx <= tx + 35 and ty <= my <= ty + 35:
+            log_debug("Shop toggle clicked", location="events.py:_handle_shop_click")
+            if self.game.shop_mode == "towers":
+                self.game.shop_mode = "tiles"
+            elif self.game.shop_mode == "tiles":
+                self.game.shop_mode = "upgrades"
+            else:
+                self.game.shop_mode = "towers"
+            self.game.shop = [None] * 5
+            self.game.economy.generate_shop()
+            return
+
         for i in range(5):
             x = 15 + i * 80
             y = 15
@@ -164,8 +217,9 @@ class EventHandler:
                 return
 
         # Reroll
-        rx = 15 + 5*80
-        if rx <= mx <= rx+35 and 65 <= my <= 100:
+        rx = 15 + 400
+        ry = 65
+        if rx <= mx <= rx + 35 and ry <= my <= ry + 35:
             self.game.economy.reroll_shop()
 
     def _handle_bench_click(self, mx, my, frame):
@@ -211,20 +265,7 @@ class EventHandler:
                 self.game.economy.cancel_merge()
 
     def _handle_map_bench_click(self, mx, my):
-        """Handle clicks in the map tile bench and shop mode toggle."""
-        # Shop mode toggle (drawn next to map tile bench)
-        tx = self.renderer.map_bench_x + 3 * 80 + 20
-        ty = self.renderer.map_bench_y
-        if tx <= mx <= tx + 35 and ty <= my <= ty + 35:
-            if self.game.shop_mode == "towers":
-                self.game.shop_mode = "tiles"
-            elif self.game.shop_mode == "tiles":
-                self.game.shop_mode = "upgrades"
-            else:
-                self.game.shop_mode = "towers"
-            self.game.shop = [None] * 5
-            self.game.economy.generate_shop()
-            return
+        """Handle clicks in the map tile bench."""
 
         for i in range(3):
             x = self.renderer.map_bench_x + i * 80
@@ -247,15 +288,22 @@ class EventHandler:
 
     def _handle_upgrade_bench_click(self, mx, my):
         """Handle clicks in the upgrade bench."""
+        log_debug("Upgrade bench click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_upgrade_bench_click")
+        # Calculate positions the same way as drawing code
         upgrade_bench_x = self.renderer.GRID_W + 10
         upgrade_bench_y = self.renderer.HEIGHT - 100
+        log_debug("Upgrade bench bounds", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y}, location="events.py:_handle_upgrade_bench_click")
 
         for i in range(3):
             x = upgrade_bench_x + i * 55
             y = upgrade_bench_y
+            log_debug(f"Checking upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80}, location="events.py:_handle_upgrade_bench_click")
             if x <= mx <= x+50 and y <= my <= y+80:
+                log_debug(f"Upgrade slot {i} clicked", location="events.py:_handle_upgrade_bench_click")
                 self.game.selected_upgrade = i if self.game.selected_upgrade != i else None
                 return
+
+        log_debug("No upgrade slot clicked", location="events.py:_handle_upgrade_bench_click")
 
     def _handle_grid_click(self, mx, my, frame):
         """Handle clicks on the game grid."""
