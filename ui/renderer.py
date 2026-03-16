@@ -8,6 +8,28 @@ from ui.swarm_fx import SwarmFXManager
 
 class Renderer:
     def __init__(self, game):
+        # #region agent log
+        import json
+        import time
+        def log_debug(msg, data=None):
+            log_entry = {
+                "sessionId": "b53f80",
+                "id": f"log_{int(time.time()*1000)}_renderer_init",
+                "timestamp": int(time.time() * 1000),
+                "location": "renderer.py:__init__",
+                "message": msg,
+                "data": data or {},
+                "runId": "black_screen_debug",
+                "hypothesisId": "renderer_init_failure"
+            }
+            try:
+                with open("debug-b53f80.log", "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except:
+                pass
+        # #endregion
+
+        log_debug("Renderer.__init__ start")
         self.game = game
 
         # Layout constants
@@ -42,10 +64,14 @@ class Renderer:
         self.CARD_BG = (40, 40, 55)
         self.CARD_SEL = (100, 150, 255)
         self.CARD_EMP = (30, 30, 40)
+        self.CARD_PURE = (245, 245, 250)  # off-white for pure merged towers
+        self.CARD_HYBRID = (120, 80, 50)  # brown for hybrid merged towers
         self.TEXT = (220, 220, 220)
 
         # Fonts (use bundled TTF in web - Font(None) can fail in wasm)
+        log_debug("Font initialization start", {"web_mode": getattr(game, "web_mode", False)})
         if getattr(game, "web_mode", False):
+            log_debug("Web mode font loading")
             font_path = None
             for candidate in [
                 os.path.join(os.path.dirname(__file__), "..", "freesansbold.ttf"),
@@ -58,22 +84,32 @@ class Renderer:
                     break
             try:
                 if font_path:
+                    log_debug("Loading fonts from file", {"font_path": font_path})
                     self.font = pygame.font.Font(font_path, 16)
                     self.font_s = pygame.font.Font(font_path, 12)
                     self.font_merge = pygame.font.Font(font_path, 20)
                     self.font_over = pygame.font.Font(font_path, 48)
+                    log_debug("File fonts loaded successfully")
                 else:
                     raise FileNotFoundError("freesansbold.ttf")
-            except Exception:
+            except Exception as e:
+                log_debug("File font loading failed, using default fonts", {"error": str(e)})
                 self.font = pygame.font.Font(None, 16)
                 self.font_s = pygame.font.Font(None, 12)
                 self.font_merge = pygame.font.Font(None, 20)
                 self.font_over = pygame.font.Font(None, 48)
         else:
-            self.font = pygame.font.SysFont("consolas", 16)
-            self.font_s = pygame.font.SysFont("consolas", 12)
-            self.font_merge = pygame.font.SysFont("consolas", 20)
-            self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
+            log_debug("System font loading")
+            try:
+                self.font = pygame.font.SysFont("consolas", 16)
+                self.font_s = pygame.font.SysFont("consolas", 12)
+                self.font_merge = pygame.font.SysFont("consolas", 20)
+                self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
+                log_debug("System fonts loaded successfully")
+            except Exception as e:
+                log_debug("System font loading failed", {"error": str(e)})
+
+        log_debug("Renderer initialization complete")
 
         # Swarm effects manager
         self.swarm_fx = SwarmFXManager()
@@ -93,9 +129,104 @@ class Renderer:
         self.map_bench_x = 15
         self.map_bench_y = self.HEIGHT - 100
 
+        log_debug("Initializing pygame display", {
+            "width": self.WIDTH,
+            "height": self.HEIGHT
+        })
+
         # Initialize screen
-        self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
-        pygame.display.set_caption("Borg TD Prototype")
+        log_debug("Creating pygame display", {"width": self.WIDTH, "height": self.HEIGHT})
+        try:
+            self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+            pygame.display.set_caption("Borg TD Prototype")
+            log_debug("Display created successfully", {"surface_size": self.screen.get_size()})
+        except Exception as e:
+            log_debug("Display creation failed", {"error": str(e)})
+
+        # Initialize fonts
+        log_debug("Initializing fonts")
+        if getattr(game, "web_mode", False):
+            log_debug("Web mode detected, loading fonts")
+            # ... existing font loading code ...
+        else:
+            log_debug("Native mode, loading system fonts")
+            try:
+                self.font = pygame.font.SysFont("consolas", 16)
+                self.font_s = pygame.font.SysFont("consolas", 12)
+                self.font_merge = pygame.font.SysFont("consolas", 20)
+                self.font_over = pygame.font.SysFont("consolas", 48, bold=True)
+                log_debug("System fonts loaded successfully")
+            except Exception as e:
+                log_debug("System font loading failed", {"error": str(e)})
+
+        log_debug("Renderer initialization complete")
+
+    def _draw_tier_effects(self, rect, tier):
+        """Draw tier-based visual effects on a card/tower."""
+        if tier <= 0:
+            return  # No effects for tier 0
+
+        center_x, center_y = rect.center
+        width, height = rect.size
+
+        # Tier 1: Subtle glow
+        if tier >= 1:
+            glow_radius = 10 + tier * 5
+            glow_surface = pygame.Surface((width + glow_radius*2, height + glow_radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surface, (255, 255, 255, 50), (width//2 + glow_radius, height//2 + glow_radius), glow_radius)
+            self.screen.blit(glow_surface, (rect.x - glow_radius, rect.y - glow_radius))
+
+        # Tier 2: Gradient fill overlay
+        if tier >= 2:
+            gradient_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+            for y in range(height):
+                alpha = int(100 * (1 - y / height))  # Fade from top to bottom
+                color = (255, 255, 255, alpha)
+                pygame.draw.line(gradient_surface, color, (0, y), (width, y))
+            self.screen.blit(gradient_surface, rect.topleft)
+
+        # Tier 3: Thick border
+        if tier >= 3:
+            border_width = 2 + (tier - 3)  # 2px for tier 3, thicker for higher
+            pygame.draw.rect(self.screen, (255, 215, 0), rect, border_width)  # Gold border
+
+        # Tier 4: Aura particles
+        if tier >= 4:
+            import random
+            for _ in range(5 + tier):  # More particles for higher tiers
+                px = center_x + random.randint(-width//2, width//2)
+                py = center_y + random.randint(-height//2, height//2)
+                pygame.draw.circle(self.screen, (255, 255, 255), (px, py), 1)
+
+    def _draw_egrem_swirls(self, x, y, width, height):
+        """Draw chaotic swirl effects for Egrem towers."""
+        import math
+        import random
+
+        # Create a surface for the swirl overlay
+        swirl_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+
+        center_x, center_y = width // 2, height // 2
+        num_swirls = 3
+
+        for i in range(num_swirls):
+            # Random swirl parameters
+            radius = random.randint(10, 25)
+            angle_offset = random.random() * 2 * math.pi
+            swirl_color = (random.randint(60, 100), random.randint(200, 255), random.randint(60, 100), 100)
+
+            # Draw swirl as connected arcs
+            points = []
+            for angle in range(0, 360, 15):
+                rad_angle = math.radians(angle) + angle_offset
+                px = center_x + int(radius * math.cos(rad_angle) * (0.5 + 0.5 * math.sin(rad_angle * 2)))
+                py = center_y + int(radius * math.sin(rad_angle) * (0.5 + 0.5 * math.sin(rad_angle * 2)))
+                points.append((px, py))
+
+            if len(points) > 2:
+                pygame.draw.lines(swirl_surface, swirl_color, False, points, 2)
+
+        self.screen.blit(swirl_surface, (x, y))
 
     def _render_text(self, font, text, color, bgcolor=None):
         """Render text with web compatibility - convert surface for proper blitting."""
@@ -129,7 +260,35 @@ class Renderer:
 
     def draw(self, frame):
         """Main drawing function."""
-        self.screen.fill(self.BLACK)
+        # #region agent log
+        import json
+        import time
+        def log_debug(msg, data=None):
+            log_entry = {
+                "sessionId": "b53f80",
+                "id": f"log_{int(time.time()*1000)}_draw",
+                "timestamp": int(time.time() * 1000),
+                "location": "renderer.py:draw",
+                "message": msg,
+                "data": data or {},
+                "runId": "black_screen_debug",
+                "hypothesisId": "draw_method_failure"
+            }
+            try:
+                with open("debug-b53f80.log", "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except:
+                pass
+        # #endregion
+
+        if frame <= 3:  # Only log first 3 frames
+            log_debug(f"Draw method called for frame {frame}")
+        try:
+            self.screen.fill(self.BLACK)
+            if frame <= 3:
+                log_debug("Screen filled with black")
+        except Exception as e:
+            log_debug("Screen fill failed", {"error": str(e)})
 
         self._draw_shop()
         self._draw_bench(frame)
@@ -234,19 +393,42 @@ class Renderer:
                     self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (x+5, y+10))
                     self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x+5, y+75))
 
-        # Shop mode toggle
-        tx = self.map_bench_x + 3*80 + 20
-        ty = self.map_bench_y
+        # Shop mode toggle (moved above refresh button)
+        tx = 15 + 400
+        ty = 15
+        # #region agent log
+        import json
+        import time
+        def log_debug(msg, data=None):
+            log_entry = {
+                "sessionId": "b53f80",
+                "id": f"log_{int(time.time()*1000)}_ui_render",
+                "timestamp": int(time.time() * 1000),
+                "location": "renderer.py:_draw_shop",
+                "message": msg,
+                "data": data or {},
+                "runId": "click_debug",
+                "hypothesisId": "ui_position_mismatch"
+            }
+            try:
+                with open("debug-b53f80.log", "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except:
+                pass
+        # #endregion
+
+        log_debug("Drawing shop toggle", {"x": tx, "y": ty, "width": 35, "height": 35, "mode": self.game.shop_mode})
         pygame.draw.rect(self.screen, self.CARD_BG, (tx, ty, 35, 35))
         pygame.draw.rect(self.screen, self.TEXT, (tx, ty, 35, 35), 1)
         mode_char = "T" if self.game.shop_mode == "towers" else ("M" if self.game.shop_mode == "tiles" else "U")
         self.screen.blit(self.font_s.render(mode_char, True, self.TEXT), (tx+10, ty+10))
 
-        # Reroll
+        # Reroll (moved below shop toggle)
         rx = 15 + 400
-        pygame.draw.rect(self.screen, self.CARD_BG, (rx, 65, 35, 35))
-        pygame.draw.rect(self.screen, self.TEXT, (rx, 65, 35, 35), 1)
-        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rx+10, 70))
+        ry = 65
+        pygame.draw.rect(self.screen, self.CARD_BG, (rx, ry, 35, 35))
+        pygame.draw.rect(self.screen, self.TEXT, (rx, ry, 35, 35), 1)
+        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rx+10, ry+10))
 
     def _draw_bench(self, frame):
         """Draw the bench section."""
@@ -258,15 +440,29 @@ class Renderer:
             x = 15 + i * 68
             y = self.SHOP_H + 15
             col = self.CARD_EMP if self.game.bench[i] is None else self.CARD_BG
+            if self.game.bench[i]:
+                merge_type = self.game.bench[i].get_merge_type()
+                if merge_type == "pure":
+                    col = self.CARD_PURE
+                elif merge_type == "hybrid":
+                    col = self.CARD_HYBRID
+                # egrem and base keep CARD_BG
             if i in (self.game.merge_tower_1, self.game.merge_tower_2):
                 col = self.CARD_SEL
             pygame.draw.rect(self.screen, col, (x, y, 60, 90))
             pygame.draw.rect(self.screen, self.TEXT, (x, y, 60, 90), 2)
             if self.game.bench[i]:
                 t = self.game.bench[i]
+                # Apply tier visual effects (feature level 8+)
+                if hasattr(self.game, 'feature_level') and self.game.feature_level >= 8:
+                    card_rect = pygame.Rect(x, y, 60, 90)
+                    self._draw_tier_effects(card_rect, t.get_merge_tier())
+
                 if t.base_type == "Nanite Swarm":
                     pygame.draw.rect(self.screen, (28, 28, 35), (x, y, 60, 90))
                     pygame.draw.rect(self.screen, (80, 255, 80), (x, y, 60, 90), 2)
+                    # Add chaotic swirl effects
+                    self._draw_egrem_swirls(x, y, 60, 90)
                     self.screen.blit(self.font_s.render("Egrem", True, (80, 255, 100)), (x+5, y+5))
                     self.screen.blit(self.font_s.render("spawn", True, (255, 80, 80)), (x+5, y+28))
                     self.screen.blit(self.font_s.render(f"T{t.get_merge_tier()}", True, self.TEXT), (x+5, y+50))
@@ -308,8 +504,31 @@ class Renderer:
 
     def _draw_upgrade_bench(self):
         """Draw the upgrade bench."""
+        # #region agent log
+        import json
+        import time
+        def log_debug(msg, data=None):
+            log_entry = {
+                "sessionId": "b53f80",
+                "id": f"log_{int(time.time()*1000)}_upgrade_render",
+                "timestamp": int(time.time() * 1000),
+                "location": "renderer.py:_draw_upgrade_bench",
+                "message": msg,
+                "data": data or {},
+                "runId": "click_debug",
+                "hypothesisId": "upgrade_bench_render_mismatch"
+            }
+            try:
+                with open("debug-b53f80.log", "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except:
+                pass
+        # #endregion
+
         upgrade_bench_x = self.GRID_W + 10
         upgrade_bench_y = self.HEIGHT - 100
+        log_debug("Drawing upgrade bench", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y})
+
         pygame.draw.rect(self.screen, self.SHOP_BG, (self.GRID_W, upgrade_bench_y - 10, self.PANEL_RIGHT_W, 100))
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, upgrade_bench_y - 10), (self.WIDTH, upgrade_bench_y - 10), 2)
         self.screen.blit(self.font_s.render("UPGRADES", True, self.TEXT), (self.GRID_W + 15, upgrade_bench_y - 5))
@@ -317,6 +536,7 @@ class Renderer:
         for i in range(3):
             x = upgrade_bench_x + i * 55
             y = upgrade_bench_y
+            log_debug(f"Drawing upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80})
             col = self.CARD_EMP if self.game.upgrade_bench[i] is None else self.CARD_BG
             if i == self.game.selected_upgrade:
                 col = self.CARD_SEL
@@ -415,29 +635,60 @@ class Renderer:
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, 0), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
 
         px = self.GRID_W + 14
-        self.screen.blit(self.font.render(f"Gold:  {self.game.gold}", True, self.TEXT), (px, 18))
-        self.screen.blit(self.font.render(f"Lives: {self.game.lives}", True, self.TEXT), (px, 42))
-        self.screen.blit(self.font.render(f"Wave:  {self.game.round_num}", True, self.TEXT), (px, 66))
+        py = 18  # Starting Y position
+
+        # Basic stats
+        self.screen.blit(self.font.render(f"Gold:  {self.game.gold}", True, self.TEXT), (px, py))
+        py += 24
+        self.screen.blit(self.font.render(f"Lives: {self.game.lives}", True, self.TEXT), (px, py))
+        py += 24
+        self.screen.blit(self.font.render(f"Wave:  {self.game.round_num}", True, self.TEXT), (px, py))
+        py += 24
+
+        # SPL/XP UI (feature level 10+)
+        if hasattr(self.game, 'feature_level') and self.game.feature_level >= 10:
+            self.screen.blit(self.font.render(f"SPL:   {self.game.shop_power_level}", True, self.TEXT), (px, py))
+            py += 24
+
+            # XP Progress bar
+            xp_ratio = self.game.xp / self.game.xp_to_next if self.game.xp_to_next > 0 else 0
+            bar_width = 120
+            bar_height = 12
+            bar_x = px
+            bar_y = py
+            pygame.draw.rect(self.screen, self.HP_BG, (bar_x, bar_y, bar_width, bar_height))
+            pygame.draw.rect(self.screen, (100, 255, 100), (bar_x, bar_y, int(bar_width * xp_ratio), bar_height))
+            pygame.draw.rect(self.screen, self.TEXT, (bar_x, bar_y, bar_width, bar_height), 1)
+            py += bar_height + 4
+
+            xp_text = f"XP: {self.game.xp}/{self.game.xp_to_next}"
+            self.screen.blit(self.font_s.render(xp_text, True, self.TEXT), (px, py))
+            py += 20
+
+        # Add some spacing before buttons
+        py += 8
 
         # Play/Pause button
-        play_rect = pygame.Rect(px, 96, 100, 26)
+        play_rect = pygame.Rect(px, py, 100, 26)
         col_play = self.PANEL_BTN_SEL if self.game.paused else self.PANEL_BTN
         pygame.draw.rect(self.screen, col_play, play_rect)
         pygame.draw.rect(self.screen, self.TEXT, play_rect, 1)
-        self.screen.blit(self.font_s.render("Play" if self.game.paused else "Pause", True, self.TEXT), (px + 28, 100))
+        self.screen.blit(self.font_s.render("Play" if self.game.paused else "Pause", True, self.TEXT), (px + 28, py + 4))
+        py += 32
 
         # Next Wave button
-        next_rect = pygame.Rect(px, 128, 100, 26)
+        next_rect = pygame.Rect(px, py, 100, 26)
         pygame.draw.rect(self.screen, self.PANEL_BTN, next_rect)
         pygame.draw.rect(self.screen, self.TEXT, next_rect, 1)
-        self.screen.blit(self.font_s.render("Next Wave", True, self.TEXT), (px + 14, 132))
+        self.screen.blit(self.font_s.render("Next Wave", True, self.TEXT), (px + 14, py + 4))
+        py += 32
 
         # Auto toggle button
-        auto_rect = pygame.Rect(px, 160, 100, 26)
+        auto_rect = pygame.Rect(px, py, 100, 26)
         col_auto = self.PANEL_BTN_SEL if self.game.auto_mode else self.PANEL_BTN
         pygame.draw.rect(self.screen, col_auto, auto_rect)
         pygame.draw.rect(self.screen, self.TEXT, auto_rect, 1)
-        self.screen.blit(self.font_s.render("Auto " + ("ON" if self.game.auto_mode else "OFF"), True, self.TEXT), (px + 18, 164))
+        self.screen.blit(self.font_s.render("Auto " + ("ON" if self.game.auto_mode else "OFF"), True, self.TEXT), (px + 18, py + 4))
 
     def _draw_upgrade_dialog(self):
         """Draw the upgrade dialog when a tower is selected."""
@@ -691,7 +942,17 @@ class Renderer:
                 else:
                     pygame.draw.rect(self.screen, (255, 100, 100), r, max(2, int(4 * self.zoom_level)))
             else:
-                pygame.draw.rect(self.screen, (220, 220, 255), r, max(1, int(2 * self.zoom_level)))
+                # Use merge type to determine border color
+                merge_type = t.get_merge_type()
+                if merge_type == "pure":
+                    border_color = (255, 255, 255)  # white for pure
+                elif merge_type == "hybrid":
+                    border_color = (160, 110, 60)  # brown for hybrid
+                elif merge_type == "egrem":
+                    border_color = (80, 255, 80)  # green for egrem
+                else:
+                    border_color = (220, 220, 255)  # light blue for base
+                pygame.draw.rect(self.screen, border_color, r, max(1, int(2 * self.zoom_level)))
 
             if t.fire_type == "Radius":
                 cx = tx + 20 * self.zoom_level
@@ -710,8 +971,30 @@ class Renderer:
                 ex, ey = pos
                 exx, eyy = self.world_to_screen(ex, ey)
                 c = (exx + 20 * self.zoom_level, eyy + 20 * self.zoom_level)
-                enemy_color = (60, 220, 60) if e.is_egrem_spawned else self.ENEMY
-                pygame.draw.circle(self.screen, enemy_color, c, max(5, int(13 * self.zoom_level)))
+                # Enemy visuals (feature level 9+: black base with green accents)
+                if hasattr(self.game, 'feature_level') and self.game.feature_level >= 9:
+                    # Black base for all enemies
+                    base_color = (0, 0, 0)
+                    pygame.draw.circle(self.screen, base_color, c, max(5, int(13 * self.zoom_level)))
+
+                    # Green accents (veins/eyes)
+                    accent_color = (0, 255, 0) if e.is_egrem_spawned else (0, 180, 0)
+                    radius = max(5, int(13 * self.zoom_level))
+
+                    # Draw accent details - small circles at cardinal points for "veins"
+                    accent_positions = [
+                        (c[0], c[1] - radius//2),  # Top (like eyes)
+                        (c[0], c[1] + radius//2),  # Bottom
+                        (c[0] - radius//2, c[1]),  # Left
+                        (c[0] + radius//2, c[1]),  # Right
+                    ]
+                    accent_radius = max(1, int(3 * self.zoom_level))
+                    for ax, ay in accent_positions:
+                        pygame.draw.circle(self.screen, accent_color, (ax, ay), accent_radius)
+                else:
+                    # Original enemy visuals
+                    enemy_color = (60, 220, 60) if e.is_egrem_spawned else self.ENEMY
+                    pygame.draw.circle(self.screen, enemy_color, c, max(5, int(13 * self.zoom_level)))
                 ratio = max(0, e.health / e.max_health)
                 bar_width = max(10, int(40 * self.zoom_level))
                 bar_height = max(2, int(6 * self.zoom_level))

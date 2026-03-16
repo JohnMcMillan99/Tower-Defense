@@ -10,6 +10,16 @@ class Enemy:
         "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
     }
 
+    # Add base_xp if feature level 3+
+    @classmethod
+    def init_for_feature_level(cls, feature_level):
+        if feature_level >= 3:
+            cls.TYPES["Drone"]["base_xp"] = 5
+            cls.TYPES["Scout"]["base_xp"] = 5
+            cls.TYPES["Harvester"]["base_xp"] = 10
+            cls.TYPES["Adaptor"]["base_xp"] = 15
+            cls.TYPES["Assimilator"]["base_xp"] = 20
+
     def __init__(self, path, enemy_type="Drone", wave_num=1, is_egrem_spawned=False, web_mode=False):
         self.path = path
         self.position_index = 0

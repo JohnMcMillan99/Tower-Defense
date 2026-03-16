@@ -21,7 +21,28 @@ class Direction(Enum):
 
 
 class Game:
-    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False):
+    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, feature_level=10):
+        def log_debug(msg, data=None):
+            import json
+            import time
+            log_entry = {
+                "sessionId": "b53f80",
+                "id": f"log_{int(time.time()*1000)}_game_init",
+                "timestamp": int(time.time() * 1000),
+                "location": "game.py:__init__",
+                "message": msg,
+                "data": data or {},
+                "runId": "init_debug",
+                "hypothesisId": "init_failure"
+            }
+            try:
+                with open("debug-b53f80.log", "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except:
+                pass
+
+        log_debug("Game.__init__ start", {"height": height, "width": width, "web_mode": web_mode, "feature_level": feature_level})
+
         # Core playable area (center of expanded grid)
         self.core_height = height
         self.core_width = width
@@ -29,10 +50,19 @@ class Game:
         self.border_size = 4
         self.height = height + 2 * self.border_size
         self.width = width + 2 * self.border_size
+        log_debug("Grid dimensions set", {"core_height": self.core_height, "core_width": self.core_width, "height": self.height, "width": self.width})
+
         self.grid = [["." for _ in range(self.width)] for _ in range(self.height)]
+        log_debug("Grid initialized")
+
         self.path_graph = PathGraph()
+        log_debug("PathGraph initialized")
+
         self.path_gen = PathGenerator(self.core_height, self.core_width)
+        log_debug("PathGenerator initialized")
+
         self.regenerate_map(min_path_len)
+        log_debug("Map regenerated")
         self.enemies = []
         self.enemy_grid = [[[] for _ in range(self.width)] for _ in range(self.height)]
         self.towers = []
@@ -47,6 +77,7 @@ class Game:
         self.map_tile_bench = [None] * 3  # Separate bench for map tiles (increased size)
         self.upgrade_bench = [None] * 3  # Upgrade bench - stores upgrade IDs
         self.selected_tower = None
+        log_debug("Shop and bench initialized")
         self.selected_map_tile = None  # Selected tile from map bench
         self.selected_upgrade = None  # Selected upgrade from upgrade bench
         self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
@@ -75,24 +106,55 @@ class Game:
         self.auto_mode = False  # Auto wave toggle
         self.shop_mode = "towers"  # "towers" or "tiles"
         self.web_mode = web_mode  # Flag for reduced load in browser
+        self.feature_level = feature_level  # Feature toggle level (1-10)
+        log_debug("Feature level set", {"feature_level": feature_level})
+
+        # Shop Power Level and XP system (enabled at level 2+)
+        if feature_level >= 2:
+            self.shop_power_level = 1
+            self.xp = 0
+            self.xp_to_next = 100
+            self.spl_max = 10
+            log_debug("SPL/XP system initialized")
 
         # Load YAML data
+        log_debug("Loading YAML data")
         self.data_loader = DataLoader()
+        log_debug("YAML data loaded")
+
+        # Initialize enemy base_xp if feature level allows
+        log_debug("Initializing enemy base_xp")
+        from models.enemy import Enemy
+        Enemy.init_for_feature_level(feature_level)
+        log_debug("Enemy base_xp initialized")
 
         # Check for pygame availability (pygbag compatibility)
+        log_debug("Checking pygame availability")
         try:
             import pygame
             self.pygame_available = True
+            log_debug("Pygame available")
         except ImportError:
             self.pygame_available = False
+            log_debug("Pygame not available")
             print("Warning: Pygame not available, visual effects will be disabled")
 
         # Initialize managers
+        log_debug("Initializing managers")
         self.economy = EconomyManager(self)
-        self.wave_manager = WaveManager(self)
-        self.board = BoardManager(self)
+        log_debug("EconomyManager initialized")
 
+        self.wave_manager = WaveManager(self)
+        log_debug("WaveManager initialized")
+
+        self.board = BoardManager(self)
+        log_debug("BoardManager initialized")
+
+        log_debug("Generating initial shop")
         self.economy.generate_shop()
+        log_debug("Initial shop generated")
+
+        log_debug("Game.__init__ complete")
 
     def regenerate_map(self, min_len):
         while True:
@@ -170,29 +232,6 @@ class Game:
           2. No tile cell may overlap an existing tower or path cell.
           3. At least one tile path endpoint must be adjacent to the map path end.
         """
-        import json
-        # #region agent log
-        def debug_log(msg, data=None):
-            log_entry = {
-                "sessionId": "03f8e0",
-                "runId": "tile_placement_debug",
-                "hypothesisId": "H1_visual_blocking_H2_no_valid_tiles",
-                "location": "can_place_tile",
-                "message": msg,
-                "data": data or {},
-                "timestamp": 0  # Will be set by logging system
-            }
-            with open("tile_placement_debug.log", "a") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        # #endregion
-
-        debug_log("can_place_tile called", {
-            "tile": tile_data["name"],
-            "position": (gx, gy),
-            "rotation": rotation,
-            "path_length": len(self.path),
-            "path_end": self.path[-1] if self.path else None
-        })
 
         rotated = self._rotate_grid(tile_data["path_grid"], rotation)
         tile_h = len(rotated)
@@ -200,7 +239,6 @@ class Game:
 
         # Rule 1 – bounds
         bounds_ok = not (gx < 0 or gy < 0 or gx + tile_w > self.width or gy + tile_h > self.height)
-        debug_log("bounds check", {"bounds_ok": bounds_ok, "gx": gx, "gy": gy, "tile_w": tile_w, "tile_h": tile_h, "grid_size": (self.width, self.height)})
         if not bounds_ok:
             return False
 
@@ -215,35 +253,31 @@ class Game:
             if overlap_found:
                 break
 
-        debug_log("overlap check", {"overlap_found": overlap_found, "tile_area": [(gx+dx, gy+dy) for dy in range(tile_h) for dx in range(tile_w)]})
         if overlap_found:
             return False
 
         tile_cells = self._get_tile_path_cells(tile_data, gx, gy, rotation)
-        debug_log("tile cells", {"tile_cells": tile_cells})
         if not tile_cells:
             return False
 
-        # Rule 3 – at least one tile endpoint must be adjacent to the path end
+        # Rule 3 – at least one tile cell must be adjacent to the path end
         tile_endpoints = self._get_endpoints(tile_cells)
         map_end = self.path[-1] if self.path else None
-
-        debug_log("adjacency check", {
-            "tile_endpoints": tile_endpoints,
-            "map_end": map_end,
-            "tile_cells": tile_cells
-        })
 
         def adjacent(a, b):
             return abs(a[0]-b[0]) + abs(a[1]-b[1]) == 1
 
-        connects = map_end and any(adjacent(te, map_end) for te in tile_endpoints)
-        debug_log("connection result", {"connects": connects})
+        # For tiles with endpoints (straight, turn), check if any endpoint is adjacent
+        # For loops (no endpoints), check if any tile cell is adjacent
+        if tile_endpoints:
+            connects = map_end and any(adjacent(te, map_end) for te in tile_endpoints)
+        else:
+            # Loop tile - check if any tile cell is adjacent to map end
+            connects = map_end and any(adjacent(tc, map_end) for tc in tile_cells)
 
         if not connects:
             return False
 
-        debug_log("placement VALID")
         return True
 
     def place_map_tile(self, tile_data, gx, gy, rotation):
@@ -401,6 +435,13 @@ class Game:
         self.enemy_grid = new_enemy_grid
         self.width = new_width
         self.height = new_height
+
+    def check_spl_level_up(self):
+        """Check for SPL level up based on current XP."""
+        while self.xp >= self.xp_to_next and self.shop_power_level < self.spl_max:
+            self.xp -= self.xp_to_next
+            self.shop_power_level += 1
+            self.xp_to_next = int(100 * (1.5 ** (self.shop_power_level - 1)))
 
     def integrity_tick(self):
         """
