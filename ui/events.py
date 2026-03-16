@@ -224,8 +224,7 @@ class EventHandler:
 
     def _handle_bench_click(self, mx, my, frame):
         """Handle clicks in the bench."""
-        # Check for merge/egrem clicks first
-        handled_merge = False
+        # Merge/egrem label click first (when active)
         if self.game.merge_preview or self.game.egrem_preview:
             idx1, idx2 = self.game.merge_tower_1, self.game.merge_tower_2
             if idx1 is not None and idx2 is not None:
@@ -240,29 +239,29 @@ class EventHandler:
                     merge_rect.inflate_ip(18, 13)
                     if merge_rect.collidepoint(mx, my):
                         self.game.economy.confirm_merge()
-                        handled_merge = True
+                        return
                 elif self.game.egrem_preview:
                     egrem_txt = self.renderer.font_merge.render("egrem", True, (0, 0, 0))
                     egrem_rect = egrem_txt.get_rect(center=(mid_x, mid_y))
                     egrem_rect.inflate_ip(18, 13)
                     if egrem_rect.collidepoint(mx, my):
                         self.game.economy._complete_egrem()
-                        handled_merge = True
+                        return
 
-        # Handle bench card clicks if merge not handled
-        if not handled_merge:
-            clicked_on_bench_card = False
-            for i in range(10):
-                x = 15 + i * 68
-                y = self.renderer.SHOP_H + 15
-                if x <= mx <= x+60 and y <= my <= y+90:
-                    if self.game.bench[i]:
-                        clicked_on_bench_card = True
-                        self.game.economy.select_for_merge(i, frame)
+        # Bench card clicks
+        clicked_on_bench_card = False
+        for i in range(10):
+            x = 15 + i * 68
+            y = self.renderer.SHOP_H + 15
+            if x <= mx <= x + 60 and y <= my <= y + 90:
+                if self.game.bench[i] is not None:
+                    clicked_on_bench_card = True
+                    self.game.economy.select_for_merge(i, frame)
+                break  # Only one slot matched
 
-            # Handle cancel if clicked outside merge/egrem area
-            if (self.game.merge_preview or self.game.egrem_preview) and not clicked_on_bench_card:
-                self.game.economy.cancel_merge()
+        # Clicked in bench area but not on a card -> cancel merge/incompatible
+        if not clicked_on_bench_card and (self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None):
+            self.game.economy.cancel_merge()
 
     def _handle_map_bench_click(self, mx, my):
         """Handle clicks in the map tile bench."""
@@ -331,12 +330,13 @@ class EventHandler:
         # Place tower from bench
         if (self.game.selected_tower is not None and
             self.game.merge_preview is None and
-            not self.game.egrem_preview):
+            not self.game.egrem_preview and
+            not self.game.incompatible_preview):
             self.game.economy.place_tower(gx, gy, self.game.selected_tower)
             return
 
-        # Clear merge/egrem selections
-        if self.game.merge_preview or self.game.egrem_preview or self.game.merge_tower_1 is not None:
+        # Clear merge/egrem/incompatible selections
+        if self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None:
             self.game.economy.cancel_merge()
 
         # Check for enemy selection
@@ -373,8 +373,8 @@ class EventHandler:
             self.renderer.dragging = False
 
         elif event.button == 3:  # Right click
-            # Cancel merge/egrem
-            if self.game.merge_preview or self.game.egrem_preview or self.game.merge_tower_1 is not None:
+            # Cancel merge/egrem/incompatible
+            if self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None:
                 self.game.economy.cancel_merge()
                 return
 

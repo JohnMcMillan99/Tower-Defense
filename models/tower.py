@@ -5,17 +5,37 @@ import random
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
 from data.units import TOWER_TRAITS
 
+def _type_to_slug(name):
+    """Convert 'Neural Processor' -> 'neural_processor'."""
+    return name.lower().replace(" ", "_")
+
 class Tower:
-    UPGRADE_CAPACITY = 3  # Maximum upgrades per tower
+    UPGRADE_CAPACITY = 3
+    _data_loader = None  # set once by Game.__init__
 
     BASE_TYPES = {
         "Neural Processor": {"dmg": 6,  "range": 2, "fire_rate": 1, "display": "Neural Processor", "fire_type": "TargetBeam"},
-        "Plasma Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Plasma Capacitor", "fire_type": "Ball"},   # slow charge, big burst
+        "Plasma Capacitor":  {"dmg": 10, "range": 2, "fire_rate": 4, "display": "Plasma Capacitor", "fire_type": "Ball"},
         "Thermal Regulator":   {"dmg": 4,  "range": 3, "fire_rate": 2, "display": "Thermal Regulator", "fire_type": "DirectionalBeam"},
         "Signal Router":      {"dmg": 7,  "range": 4, "fire_rate": 2, "display": "Signal Router", "fire_type": "Track"},
         "Quantum Field Gen":   {"dmg": 2,  "range": 99, "fire_rate": 10, "display": "Quantum Field Gen", "fire_type": "Overwatch"},
-        "Nanite Swarm":      {"dmg": 0,  "range": 0, "fire_rate": 0, "display": "Nanite Swarm", "fire_type": "Spawner"},       # spawns enemies, no attack
+        "Nanite Swarm":      {"dmg": 0,  "range": 0, "fire_rate": 0, "display": "Nanite Swarm", "fire_type": "Spawner"},
     }
+
+    @classmethod
+    def set_data_loader(cls, loader):
+        """Register the DataLoader so all Tower instances can access YAML data."""
+        cls._data_loader = loader
+        for ht in loader.get_hybrid_trees():
+            result_name = ht["result"]
+            if result_name not in cls.BASE_TYPES:
+                cls.BASE_TYPES[result_name] = {
+                    "dmg": ht.get("dmg", 6),
+                    "range": ht.get("range", 2),
+                    "fire_rate": ht.get("fire_rate", 2),
+                    "fire_type": ht.get("fire_type", "TargetBeam"),
+                    "display": result_name,
+                }
 
     def __init__(self, x, y, tower_type="Neural Processor", parents=None):
         self.x = x
@@ -47,7 +67,43 @@ class Tower:
         self._calculate_stats()
 
     def get_traits(self):
-        return list(TOWER_TRAITS.get(self.base_type, []))
+        """Return base traits + auto-generated purity/hybrid tags."""
+        base_traits = list(TOWER_TRAITS.get(self.base_type, []))
+        if self._data_loader:
+            slug = _type_to_slug(self.base_type)
+            loader_traits = self._data_loader.traits.get(slug, [])
+            for t in loader_traits:
+                if t not in base_traits:
+                    base_traits.append(t)
+
+        if self.merge_generation >= 1 and self.parents:
+            purity = self.calculate_purity()
+            slug = _type_to_slug(self.base_type)
+            gen = min(self.merge_generation, 3)
+            if purity == 100:
+                base_traits.append(f"pure_{slug}_gen{gen}")
+                base_traits.append("pure_lineage")
+                if gen >= 2:
+                    base_traits.append("mastery")
+                if gen >= 3:
+                    base_traits.append("apex")
+            elif purity < 100:
+                base_traits.append("hybrid")
+                combo = self._get_hybrid_combo_tag()
+                if combo:
+                    base_traits.append(combo)
+        return base_traits
+
+    def _get_hybrid_combo_tag(self):
+        """Derive hybrid combo tag from parent types (e.g. 'neural_plasma')."""
+        if not self.parents:
+            return None
+        unique_types = sorted(set(self.parents))
+        if len(unique_types) >= 2:
+            slugs = sorted([_type_to_slug(t) for t in unique_types[:2]])
+            short = [s.split("_")[0] for s in slugs]
+            return "_".join(short)
+        return None
 
     def get_effective_traits(self):
         traits = set(self.get_traits())
@@ -57,29 +113,101 @@ class Tower:
                     traits.add(t)
         return traits
 
+    def calculate_purity(self):
+        """Return purity score 0-100. 100 = all parents match self.base_type."""
+        if not self.parents:
+            return 100
+        matching = sum(1 for p in self.parents if p == self.base_type)
+        return int(matching / len(self.parents) * 100)
+
+    def _apply_lineage_bonuses(self):
+        """Apply purity / hybrid bonuses from trait_bonuses YAML data."""
+        if self.merge_generation < 1:
+            return
+        loader = self._data_loader
+        if not loader:
+            return
+        bonuses = loader.get_trait_bonuses()
+        if not bonuses:
+            return
+
+        purity = self.calculate_purity()
+        gen = self.merge_generation
+
+        if purity == 100:
+            pure_b = bonuses.get("pure_lineage", {})
+            req = pure_b.get("purity_requirement", 100)
+            if purity >= req:
+                self.dmg = int(self.dmg * pure_b.get("dmg_mult", 1.0))
+                self.range += pure_b.get("range_bonus", 0)
+                self.fire_rate = max(1, int(self.fire_rate / pure_b.get("fire_rate_mult", 1.0)))
+            exp_b = bonuses.get("exponential_bonus", {})
+            stack = exp_b.get("stack_mult", 1.25)
+            self.dmg = int(self.dmg * (stack ** gen))
+            if gen >= 2:
+                mastery_b = bonuses.get("mastery", {})
+                self.dmg = int(self.dmg * mastery_b.get("dmg_mult", 1.0))
+            if gen >= 3:
+                apex_b = bonuses.get("apex", {})
+                self.dmg = int(self.dmg * apex_b.get("dmg_mult", 1.0))
+        else:
+            hybrid_b = bonuses.get("hybrid", {})
+            self.dmg = int(self.dmg * hybrid_b.get("dmg_mult", 1.0))
+            combo_tag = self._get_hybrid_combo_tag()
+            if combo_tag:
+                combo_b = bonuses.get(combo_tag, {})
+                self.dmg = int(self.dmg * combo_b.get("dmg_mult", 1.0))
+                self.range += combo_b.get("range_bonus", 0)
+                fr = combo_b.get("fire_rate_mult", 1.0)
+                if fr != 1.0:
+                    self.fire_rate = max(1, int(self.fire_rate / fr))
+
+    def get_display_name(self):
+        """Return the display name based on purity and merge generation."""
+        if self.merge_generation < 1:
+            return self.base_type
+
+        loader = self._data_loader
+        purity = self.calculate_purity()
+
+        if purity == 100:
+            rules = {}
+            if loader:
+                rules = loader.get_pure_naming_rules()
+            if not rules:
+                rules = loader.get_trait_rules().get("naming_conventions", {}).get("pure", {}) if loader else {}
+            gen_key = f"gen{min(self.merge_generation, 3)}"
+            template = rules.get(gen_key, self.base_type)
+            return template.replace("{base_type}", self.base_type)
+        else:
+            if loader:
+                for ht in loader.get_hybrid_trees():
+                    if self.base_type == ht.get("result"):
+                        return self.base_type
+            return self.base_type
+
     def _calculate_stats(self):
         base = self.BASE_TYPES.get(self.base_type, self.BASE_TYPES["Neural Processor"])
-        merge_level = self.merge_generation  # Use merge_generation for tier-based calculation
+        merge_level = self.merge_generation
         boost = 1.0 + merge_level * 0.3
 
         self.dmg = int(base["dmg"] * boost)
         self.range = base["range"] + merge_level
         self.fire_rate = max(1, int(base["fire_rate"] / boost) or 1)
 
-        # Apply upgrades
+        self._apply_lineage_bonuses()
+
         for uid in self.upgrades:
             u = UPGRADE_DEFS.get(uid, {})
             self.dmg = max(1, int(self.dmg * (1 + u.get("dmg_mult", 0))))
             self.range = max(1, self.range + u.get("range_bonus", 0))
             self.fire_rate = max(1, int(self.fire_rate * (1 + u.get("fire_rate_mult", 0))))
 
-        # Synergy bonus: +10% effect if upgrade synergizes with base trait
         for uid in self.upgrades:
             u = UPGRADE_DEFS.get(uid, {})
-            if any(s in self.get_traits() for s in u.get("synergizes_with", [])):
+            if any(s in TOWER_TRAITS.get(self.base_type, []) for s in u.get("synergizes_with", [])):
                 self.dmg = int(self.dmg * 1.10)
-                self.range += 0.2   # small bonus
-                # could add more here
+                self.range += 0.2
 
     def get_merge_tier(self):
         return self.merge_generation
@@ -90,17 +218,44 @@ class Tower:
             return "egrem"
         if self.merge_generation < 1:
             return "base"
-        return "pure" if len(set(self.parents)) == 1 else "hybrid"
+        return "pure" if self.calculate_purity() == 100 else "hybrid"
 
     @staticmethod
     def merge_towers(tower1, tower2):
-        new_tower = Tower(0, 0, tower_type=tower1.base_type)
-        new_tower.merge_generation = tower1.merge_generation + 1  # Increment tier
+        result_type = tower1.base_type
+
+        loader = Tower._data_loader
+        if loader and tower1.base_type != tower2.base_type:
+            pair = tuple(sorted([tower1.base_type, tower2.base_type]))
+            for ht in loader.get_hybrid_trees():
+                ht_pair = tuple(sorted(ht["parents"]))
+                if pair == ht_pair:
+                    result_type = ht["result"]
+                    break
+
+        new_tower = Tower(0, 0, tower_type=result_type)
+        new_tower.merge_generation = tower1.merge_generation + 1
         new_tower.parents = tower1.parents + tower2.parents + [tower1.base_type, tower2.base_type]
         new_tower.gold_invested = tower1.gold_invested + tower2.gold_invested
-        new_tower.upgrades = list(set(tower1.upgrades + tower2.upgrades))  # combine unique upgrades
+        new_tower.upgrades = list(set(tower1.upgrades + tower2.upgrades))
         new_tower._calculate_stats()
         return new_tower
+
+    @staticmethod
+    def can_merge(tower1, tower2):
+        """Check if two towers can merge (same tier + same type or hybrid tree match)."""
+        if tower1.get_merge_tier() != tower2.get_merge_tier():
+            return False
+        if tower1.base_type == tower2.base_type:
+            return True
+        loader = Tower._data_loader
+        if loader:
+            pair = tuple(sorted([tower1.base_type, tower2.base_type]))
+            for ht in loader.get_hybrid_trees():
+                ht_pair = tuple(sorted(ht["parents"]))
+                if pair == ht_pair:
+                    return True
+        return False
 
     def _configure_egrem_spawning(self):
         """Configure egrem spawning based on source tower types."""

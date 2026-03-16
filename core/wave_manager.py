@@ -1,35 +1,47 @@
 import random
 from models.enemy import Enemy
 from models.assimilator import Assimilator
+from core.strategy_analyzer import StrategyAnalyzer
+from config import log_debug
 
 
 class WaveManager:
     def __init__(self, game):
         self.game = game
+        self.strategy_analyzer = StrategyAnalyzer()
+        self._strategy_profile = {}
 
     def start_next_wave(self):
         if self.game.wave_active:
             return
         self.game.wave_active = True
-        if self.game.web_mode:
-            wave_size = max(3, (5 + self.game.round_num) // 2)
-        else:
-            wave_size = 5 + self.game.round_num * 2
-        types = ["Drone"]
-        if self.game.round_num >= 3: types.append("Scout")
-        if self.game.round_num >= 5: types.append("Harvester")
-        if self.game.round_num >= 7: types.append("Adaptor")
-        if self.game.round_num >= 9: types.append("Assimilator")
+
+        self._strategy_profile = self.strategy_analyzer.analyze(self.game)
+        rt = self.game.data_loader.get_resistance_tables() if hasattr(self.game, 'data_loader') else {}
+
+        log_debug("wave_strategy_profile", {
+            "wave": self.game.round_num,
+            "hybrid_exposure": self._strategy_profile.get("_hybrid_exposure", 0),
+            "pure_exposure": self._strategy_profile.get("_pure_exposure", 0),
+            "tower_count": self._strategy_profile.get("_tower_count", 0),
+            "corruption_tiles": getattr(self.game, 'augment_manager', None) and self.game.augment_manager.tiles_placed_count or 0,
+        }, location="wave_manager.py")
+
+        tower_purity = []
+        for t in self.game.towers:
+            if t.merge_generation >= 1:
+                tower_purity.append({"type": t.base_type, "gen": t.merge_generation, "purity": t.calculate_purity()})
+        if tower_purity:
+            log_debug("tower_purity_snapshot", {"towers": tower_purity}, location="wave_manager.py")
+
+        event = self.game.data_loader.get_event_wave(self.game.round_num) if hasattr(self.game, 'data_loader') else None
         self.game.spawn_queue = []
-        for _ in range(wave_size):
-            enemy_type = random.choice(types)
-            if enemy_type == "Assimilator":
-                enemy = Assimilator(self.game.path, self.game.round_num, web_mode=self.game.web_mode)
-                enemy.set_game_reference(self.game)
-            else:
-                enemy = Enemy(self.game.path, enemy_type, self.game.round_num, web_mode=self.game.web_mode)
-            self.game.spawn_queue.append(enemy)
-        # Egrem towers on grid spawn 1-2 mini-boss style enemies per wave (fewer, stronger)
+
+        if event:
+            self._spawn_event_wave(event, rt)
+        else:
+            self._spawn_normal_wave(rt)
+
         for t in self.game.towers:
             if t.base_type == "Nanite Swarm":
                 if self.game.web_mode:
@@ -39,6 +51,47 @@ class WaveManager:
                 for _ in range(spawn_count):
                     self.game.spawn_queue.append(Enemy(self.game.path, "Assimilator", self.game.round_num + 2, web_mode=self.game.web_mode))
         self.game.spawn_timer = 0
+
+    def _spawn_normal_wave(self, rt):
+        if self.game.web_mode:
+            wave_size = max(3, (5 + self.game.round_num) // 2)
+        else:
+            wave_size = 5 + self.game.round_num * 2
+        types = ["Drone"]
+        if self.game.round_num >= 3: types.append("Scout")
+        if self.game.round_num >= 5: types.append("Harvester")
+        if self.game.round_num >= 7: types.append("Adaptor")
+        if self.game.round_num >= 9: types.append("Assimilator")
+        for _ in range(wave_size):
+            enemy_type = random.choice(types)
+            if enemy_type == "Assimilator":
+                enemy = Assimilator(self.game.path, self.game.round_num, web_mode=self.game.web_mode)
+                enemy.set_game_reference(self.game)
+            else:
+                enemy = Enemy(self.game.path, enemy_type, self.game.round_num, web_mode=self.game.web_mode)
+            enemy.adapt_to_profile(self._strategy_profile, rt)
+            self.game.spawn_queue.append(enemy)
+
+    def _spawn_event_wave(self, event, rt):
+        """Build spawn_queue from an event wave definition."""
+        composition = event.get("composition", {})
+        hp_mult = event.get("hp_mult", 1.0)
+        speed_mult = event.get("speed_mult", 1.0)
+
+        for enemy_type, count in composition.items():
+            for _ in range(count):
+                if enemy_type == "Assimilator":
+                    enemy = Assimilator(self.game.path, self.game.round_num, web_mode=self.game.web_mode)
+                    enemy.set_game_reference(self.game)
+                else:
+                    enemy = Enemy(self.game.path, enemy_type, self.game.round_num, web_mode=self.game.web_mode)
+                enemy.max_health = int(enemy.max_health * hp_mult)
+                enemy.health = enemy.max_health
+                enemy.speed_mult *= speed_mult
+                enemy.adapt_to_profile(self._strategy_profile, rt)
+                self.game.spawn_queue.append(enemy)
+
+        random.shuffle(self.game.spawn_queue)
 
     def update_wave(self, frame):
         if not self.game.wave_active or self.game.paused:

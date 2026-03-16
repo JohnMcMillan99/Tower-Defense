@@ -134,13 +134,17 @@ Tower Defense/
 │   ├── tiles.py       # Map expansion tile definitions
 │   ├── units.py       # Tower types and traits
 │   ├── upgrades.py    # Software upgrade definitions
-│   └── yaml/          # merges.yaml, enemies.yaml, meta_unlocks.yaml, assimilators.yaml
+│   └── yaml/          # merges.yaml, enemies.yaml, meta_unlocks.yaml, assimilators.yaml,
+│                       # traits.yaml, augment_rules.yaml, event_waves.yaml
 ├── map/
-│   └── path_graph.py  # Path connectivity for tile placement
+│   ├── path_graph.py      # Path connectivity for tile placement
+│   └── augment_manager.py # Cell augments, corruption mechanics
+├── core/
+│   └── strategy_analyzer.py # Tower trait aggregation for enemy adaptation
 ├── utils/
 │   └── path_generator.py  # Map path generation (canonical; TD3.py is deprecated)
 ├── legacy/            # Deprecated code (td_visual.py)
-└── tests/             # Unit tests (pytest)
+└── tests/             # Unit tests (pytest) – test_purity.py, test_adaptation.py, test_augments.py
 ```
 
 ### Core Classes
@@ -151,10 +155,14 @@ class Tower:
     UPGRADE_CAPACITY = 3  # Max upgrades per tower
 
     def __init__(self, x, y, tower_type, parents=None)
-    def _calculate_stats(self)
-    def merge_towers(tower1, tower2)  # Static method
-    def get_merge_tier(self)           # Returns merge_generation
-    def get_effective_traits(self)     # Base + upgrade traits
+    def _calculate_stats(self)          # Base + lineage + upgrade stats
+    def merge_towers(tower1, tower2)    # Static: handles pure + hybrid trees
+    def can_merge(tower1, tower2)       # Static: same-tier + type/hybrid check
+    def calculate_purity(self) -> float # 0-100 purity score
+    def get_traits(self)                # Base + auto-generated purity/hybrid tags
+    def get_display_name(self)          # YAML naming rules (Enhanced/Advanced/Apex)
+    def get_merge_tier(self)            # Returns merge_generation
+    def get_effective_traits(self)      # Base + upgrade traits
 ```
 
 #### `Enemy` (models/enemy.py)
@@ -302,13 +310,18 @@ Set `DEBUG = True` in `config.py` to enable debug logging to `debug.log`. Useful
 - Merge bonus percentages (+50% dmg, +1 range) can be tweaked for progression curve
 
 ### Code Structure for Additions
-- **New Tower Type**: Add to `Tower.BASE_TYPES` dict with stats
+- **New Tower Type**: Add to `Tower.BASE_TYPES` dict with stats, or define in `merges.yaml` hybrid_trees
+- **New Hybrid Combo**: Add entry to `hybrid_trees` in `data/yaml/merges.yaml` – no code changes needed
 - **New Enemy Type**: Add to `Enemy.TYPES` dict, update `spawn_wave()` unlock logic
 - **New Wave Mechanic**: Modify `Game.update_wave()` and wave loop in main pygame function
+- **New Augment**: Add entry to `data/yaml/augment_rules.yaml` – picked up automatically
+- **New Event Wave**: Add entry to `data/yaml/event_waves.yaml` – triggers on matching wave number
+- **Tuning Trait Bonuses**: Edit `data/yaml/traits.yaml` (pure_lineage, exponential_bonus, hybrid penalties)
 
 ### Dependencies
 - **Python 3.11.2** (required for full compatibility)
 - **Pygame 2.0+** (2.6.1 currently installed)
+- **PyYAML** (6.0+) for YAML data loading
 - **TD3.PathGenerator** (map path generation algorithm)
 
 ---
@@ -330,8 +343,12 @@ Set `DEBUG = True` in `config.py` to enable debug logging to `debug.log`. Useful
 13. **Phase 13**: Tile-based map expansion (purchasable tiles, rotation, path connection, dynamic grid)
 14. **Phase 14**: 3-way shop toggle (towers/tiles/upgrades), upgrade shop, upgrade bench, apply-from-bench flow
 15. **Phase 15**: Tower upgrade capacity (3 per tower), visual feedback for upgrade application
+16. **Phase 16**: Tower Lineage & Purity system – pure merges give exponential bonuses, hybrid trees create curated combo towers (Cortex Assimilator, Thermal Router, Quantum Burst Engine, Neural Field Generator)
+17. **Phase 17**: Enemy Adaptation – StrategyAnalyzer tracks tower traits; enemies gain resistances to hybrid towers and speed boosts via YAML resistance_tables
+18. **Phase 18**: Map Augments & Corruption – AugmentManager adds cell buffs/debuffs after tile threshold; corruption obstacles on expansion
+19. **Phase 19**: Event waves from YAML, FPS display, debug logging for purity/exposure/corruption
 
-Current focus: Shop/bench/upgrade flow complete; next priorities are balance tuning and advanced mechanics.
+Current focus: All core systems implemented and data-driven via YAML. Next: balance tuning, sound/music, difficulty modes.
 
 ---
 
@@ -345,24 +362,38 @@ Current focus: Shop/bench/upgrade flow complete; next priorities are balance tun
 - **Upgrade Shop & Bench**: Buy upgrades from shop, store in 3-slot bench, apply to towers.
 - **Status**: Implemented.
 
-### Phase 2: Enemy Complexity Overhaul
-**Goal**: Add adaptive enemies with tiered difficulty.
-- **Enemy Tiers**: Normal, Elite, Mini-Boss, Boss, Event types.
-- **Adaptation System**: Enemies adjust stats based on player strategy profile.
-- **Dynamic Scaling**: Stats tied to difficulty tiers, not just wave numbers.
-- **Performance**: Precomputed adaptations, lightweight debuff system.
+### Phase 2: Tower Lineage & Purity System (Implemented)
+**Goal**: Make pure merges exponentially rewarding; hybrids risky but curated.
+- **Purity Score**: 0–100 based on parent matching; 100 = all parents same type.
+- **Pure Path**: Exponential bonuses (dmg, range, fire_rate) per generation via `traits.yaml`.
+- **Hybrid Trees**: 4 curated combos in `merges.yaml` (Neural+Plasma → Cortex Assimilator, etc.).
+- **Display Names**: Pure gen naming ("Enhanced", "Advanced", "Apex"); hybrid names from YAML.
+- **Trait Tags**: Auto-generated from base_type + merge lineage; used across all systems.
+- **UI**: Bench cards show purity %, Pure/Hybrid badge, display name.
+- **Status**: Implemented. 21 tests passing.
 
-### Phase 3: Tower Merge Depth
-**Goal**: Unique merge combinations and synergies.
-- **Merge Trees**: Specific parent combinations unlock special towers.
-- **Synergy Bonuses**: Multiplicative effects for strategic merges.
-- **Evolution System**: Branching progression paths.
+### Phase 3: Enemy Adaptation & Counter System (Implemented)
+**Goal**: Enemies adapt to player strategy; hybrid exposure increases resistance.
+- **Strategy Analyzer**: `core/strategy_analyzer.py` – aggregates tower trait tags every 3 waves.
+- **Resistance Tables**: `enemies.yaml` defines factor_per_point, max_factor, target tags.
+- **Enemy Adaptation**: `adapt_to_profile()` sets per-tag damage resistance and speed boost.
+- **Damage Integration**: `take_damage(dmg, attacker_tags)` applies resistances.
+- **Status**: Implemented. 8 tests passing.
 
-### Phase 4: Advanced Mechanics Integration
-**Goal**: Polish and balance all systems.
-- **Event Waves**: Special enemy compositions and goals.
-- **Performance Monitoring**: FPS tracking, optimization passes.
-- **Balance Tuning**: Iterative testing of scaling curves.
+### Phase 4: Map Augments & Corruption (Implemented)
+**Goal**: Risk/reward for map expansion.
+- **Corruption**: After N tiles placed (configurable), obstacles spawn with probability.
+- **Cell Augments**: `augment_rules.yaml` defines per-cell stat modifiers (range boost, slow zone).
+- **Tile Traits**: Each tile type has traits (path_short, risk_high, etc.) for future expansion.
+- **AugmentManager**: Tracks tiles_placed, manages cell augments, applies effects to towers.
+- **Status**: Implemented. 8 tests passing.
+
+### Phase 5: Advanced Mechanics Integration (Implemented)
+**Goal**: Tie systems together; events; performance; balance tuning.
+- **Event Waves**: `event_waves.yaml` defines special compositions with HP/speed multipliers.
+- **FPS Display**: Rendered when `DEBUG=True` or `show_fps` enabled.
+- **Debug Logging**: Purity snapshots, exposure profiles, corruption counts logged per wave.
+- **Status**: Implemented.
 
 ### Legacy Roadmap (Completed/Outdated)
 

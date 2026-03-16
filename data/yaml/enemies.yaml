@@ -29,3 +29,16 @@ enemies:
     difficulty: 3
     latch_eligible: true
     first_wave: 9
+
+resistance_tables:
+  hybrid_exposure:
+    factor_per_point: 0.05
+    max_factor: 0.5
+    speed_boost_per_point: 0.02
+    max_speed_boost: 0.4
+    applies_to_tags:
+      - hybrid
+      - neural_plasma
+      - thermal_signal
+      - quantum_plasma
+      - neural_quantum

@@ -3,6 +3,7 @@ from enum import Enum
 from models.enemy import Enemy
 from models.tower import Tower
 from map.path_graph import PathGraph
+from map.augment_manager import AugmentManager
 from data.tiles import TILE_TYPES
 from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
@@ -85,6 +86,8 @@ class Game:
         self.egrem_total_spent = 0
         self.egrem_flash_until = 0    # frame when flash ends
         self.egrem_flash_bench_idx = None
+        self.incompatible_preview = False  # Show "Incompatible" when same-tier towers can't merge
+        self.incompatible_show_until = 0   # frame when to auto-clear
         self.auto_mode = False  # Auto wave toggle
         self.shop_mode = "towers"  # "towers" or "tiles"
         self.web_mode = web_mode  # Flag for reduced load in browser
@@ -101,6 +104,8 @@ class Game:
         # Load YAML data
         log_debug("Loading YAML data", location="game.py")
         self.data_loader = DataLoader()
+        Tower.set_data_loader(self.data_loader)
+        self.augment_manager = AugmentManager(self.data_loader)
         log_debug("YAML data loaded", location="game.py")
 
         # Initialize enemy base_xp (disabled in minimal mode)
@@ -126,6 +131,10 @@ class Game:
 
         self.wave_manager = WaveManager(self)
         log_debug("WaveManager initialized", location="game.py")
+
+        def spawn_enemy_at_position(enemy_type, x, y, wave_num=1):
+            return self.wave_manager.spawn_enemy_at_position(enemy_type, x, y, wave_num)
+        self.spawn_enemy_at_position = spawn_enemy_at_position
 
         self.board = BoardManager(self)
         log_debug("BoardManager initialized", location="game.py")
@@ -360,6 +369,9 @@ class Game:
                     self.grid[gy + dy][gx + dx] = 'P'  # path
                 else:
                     self.grid[gy + dy][gx + dx] = 'X'  # expanded non-path
+
+        self.augment_manager.on_tile_placed()
+        self.augment_manager.try_add_corruption(self)
         tile_placement_log("place_map_tile_DONE")
 
     def should_expand_map(self, tile_cells):

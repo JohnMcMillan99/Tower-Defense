@@ -1,0 +1,21 @@
+corruption:
+  tiles_threshold: 5
+  probability: 0.3
+  obstacle_types:
+    - blocked
+    - slow_zone
+
+augments:
+  augment_range_boost:
+    range_bonus: 1
+    dmg_mult: 1.0
+  augment_dmg_boost:
+    range_bonus: 0
+    dmg_mult: 1.2
+  augment_slow_zone:
+    enemy_speed_mult: 0.7
+  blocked:
+    dmg_mult: 0.0
+    range_bonus: 0
+  slow_zone:
+    enemy_speed_mult: 0.8

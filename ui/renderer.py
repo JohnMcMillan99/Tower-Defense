@@ -91,8 +91,9 @@ class Renderer:
 
         log_debug("Renderer initialization complete", location="renderer.py")
 
-        # Swarm effects manager
         self.swarm_fx = SwarmFXManager()
+        self._fps_clock = pygame.time.Clock()
+        self._show_fps = getattr(game, 'show_fps', False)
 
         # Tower colors
         self.tower_colors = {
@@ -102,6 +103,11 @@ class Renderer:
             "Signal Router": (200, 100, 255),
             "Quantum Field Gen": (255, 200, 50),
             "Nanite Swarm": (40, 40, 45),
+            "Thermal Plasma Core": (255, 140, 80),
+            "Cortex Assimilator": (120, 180, 255),
+            "Thermal Router": (230, 140, 200),
+            "Quantum Burst Engine": (200, 230, 80),
+            "Neural Field Generator": (100, 180, 200),
         }
 
         # Layout positions
@@ -251,7 +257,7 @@ class Renderer:
         self._draw_map_tile_bench()
         self._draw_upgrade_bench()
         self._draw_rotate_button()
-        self._draw_merge_preview()
+        self._draw_merge_preview(frame)
         self._draw_right_panel()
         self._draw_upgrade_dialog()
         self._draw_enemy_stats()
@@ -266,6 +272,7 @@ class Renderer:
         self._draw_game_over()
         self._draw_camera_info()
         self._draw_version_info()
+        self._draw_fps()
 
     def _draw_version_info(self):
         """Draw version/timestamp info in top right corner."""
@@ -282,6 +289,17 @@ class Renderer:
 
         # Draw text
         self.screen.blit(text_surface, text_rect)
+
+    def _draw_fps(self):
+        """Draw FPS counter when DEBUG or show_fps is enabled."""
+        from config import DEBUG
+        if not (DEBUG or self._show_fps):
+            return
+        fps = self._fps_clock.get_fps()
+        self._fps_clock.tick()
+        fps_text = f"FPS: {fps:.0f}"
+        text_surface = self.font_s.render(fps_text, True, (0, 255, 0))
+        self.screen.blit(text_surface, (5, self.HEIGHT - 18))
 
     def _draw_latch_effects(self):
         """Draw assimilator latch effects."""
@@ -382,7 +400,7 @@ class Renderer:
                 elif merge_type == "hybrid":
                     col = self.CARD_HYBRID
                 # egrem and base keep CARD_BG
-            if i in (self.game.merge_tower_1, self.game.merge_tower_2):
+            if i in (self.game.merge_tower_1, self.game.merge_tower_2) and self.game.bench[i] is not None:
                 col = self.CARD_SEL
             pygame.draw.rect(self.screen, col, (x, y, 60, 90))
             pygame.draw.rect(self.screen, self.TEXT, (x, y, 60, 90), 2)
@@ -402,10 +420,20 @@ class Renderer:
                     self.screen.blit(self.font_s.render("spawn", True, (255, 80, 80)), (x+5, y+28))
                     self.screen.blit(self.font_s.render(f"T{t.get_merge_tier()}", True, self.TEXT), (x+5, y+50))
                 else:
-                    display_name = t.BASE_TYPES[t.base_type]["display"]
-                    self.screen.blit(self.font_s.render(display_name[:6], True, self.TEXT), (x+5, y+5))
+                    display_name = t.get_display_name() if hasattr(t, 'get_display_name') else t.base_type
+                    self.screen.blit(self.font_s.render(display_name[:8], True, self.TEXT), (x+5, y+5))
                     self.screen.blit(self.font_s.render(f"D:{t.dmg}", True, self.TEXT), (x+5, y+30))
-                    self.screen.blit(self.font_s.render(f"T{t.get_merge_tier()}", True, self.TEXT), (x+5, y+50))
+                    tier_label = f"T{t.get_merge_tier()}"
+                    mtype = t.get_merge_type()
+                    if mtype == "pure" and t.merge_generation >= 1:
+                        tier_label += " Pure"
+                    elif mtype == "hybrid":
+                        tier_label += " Hyb"
+                    self.screen.blit(self.font_s.render(tier_label, True, self.TEXT), (x+5, y+50))
+                    if t.merge_generation >= 1 and hasattr(t, 'calculate_purity'):
+                        purity = t.calculate_purity()
+                        p_col = (100, 255, 100) if purity == 100 else (255, 180, 60)
+                        self.screen.blit(self.font_s.render(f"P:{purity}%", True, p_col), (x+5, y+70))
 
         # Flash overlay for egrem
         if self.game.egrem_flash_bench_idx is not None and frame < self.game.egrem_flash_until:
@@ -497,9 +525,14 @@ class Renderer:
             hint_lbl = self.font_s.render("A/D or </> rotate", True, (120, 120, 140))
             self.screen.blit(hint_lbl, (rot_x - 10, rot_y + 46))
 
-    def _draw_merge_preview(self):
-        """Draw merge/egrem preview lines and labels."""
-        for preview_info in [self.game.economy.get_merge_preview_info(), self.game.economy.get_egrem_preview_info()]:
+    def _draw_merge_preview(self, frame=0):
+        """Draw merge/egrem/incompatible preview lines and labels."""
+        preview_sources = [
+            self.game.economy.get_merge_preview_info(),
+            self.game.economy.get_egrem_preview_info(),
+            self.game.economy.get_incompatible_preview_info(frame),
+        ]
+        for preview_info in preview_sources:
             if preview_info is None:
                 continue
 
@@ -522,7 +555,10 @@ class Renderer:
             # Draw lines
             for i in range(len(pts) - 1):
                 pygame.draw.line(self.screen, preview_info["line_color_outer"], pts[i], pts[i + 1], preview_info["line_width_outer"])
-                c = preview_info["line_color_inner_1"] if preview_info["is_egrem"] and "line_color_inner_1" in preview_info and i % 2 == 0 else preview_info["line_color_inner"]
+                if preview_info.get("is_egrem") and "line_color_inner_1" in preview_info:
+                    c = preview_info["line_color_inner_1"] if i % 2 == 0 else preview_info["line_color_inner_2"]
+                else:
+                    c = preview_info.get("line_color_inner", preview_info["line_color_outer"])
                 pygame.draw.line(self.screen, c, pts[i], pts[i + 1], preview_info["line_width_inner"])
 
             # Draw label
@@ -539,9 +575,10 @@ class Renderer:
                                (label_rect.centerx - label_surf.get_width()//2 + ox, label_rect.centery - label_surf.get_height()//2 + oy))
             self.screen.blit(label_surf, (label_rect.centerx - label_surf.get_width()//2, label_rect.centery - label_surf.get_height()//2))
 
-            # Draw cost
-            cost_surf = self.font_s.render(f"${preview_info['cost']}", True, preview_info["cost_color"])
-            self.screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
+            # Draw cost (merge/egrem only; incompatible has no cost)
+            if "cost" in preview_info:
+                cost_surf = self.font_s.render(f"${preview_info['cost']}", True, preview_info.get("cost_color", self.TEXT))
+                self.screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
 
     def _draw_right_panel(self):
         """Draw the right panel with game stats and controls."""
@@ -618,7 +655,8 @@ class Renderer:
         pygame.draw.rect(self.screen, (35, 35, 50), dialog_rect)
         pygame.draw.rect(self.screen, self.TEXT, dialog_rect, 2)
         self.screen.blit(self.font.render("Upgrade", True, self.TEXT), (self.GRID_W + 14, 168))
-        self.screen.blit(self.font_s.render(f"{t.base_type}  D:{t.dmg} R:{t.range}", True, self.TEXT), (self.GRID_W + 14, 184))
+        dname = t.get_display_name() if hasattr(t, 'get_display_name') else t.base_type
+        self.screen.blit(self.font_s.render(f"{dname}  D:{t.dmg} R:{t.range}", True, self.TEXT), (self.GRID_W + 14, 184))
 
         capacity_text = f"Upgrades: {len(t.upgrades)}/{t.UPGRADE_CAPACITY}"
         capacity_color = (180, 180, 200) if len(t.upgrades) < t.UPGRADE_CAPACITY else (255, 150, 150)

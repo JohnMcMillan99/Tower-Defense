@@ -1,0 +1,31 @@
+event_waves:
+  - wave: 10
+    name: "Borg Surge"
+    description: "A massive wave of adapted enemies"
+    composition:
+      Adaptor: 5
+      Assimilator: 3
+    hp_mult: 1.5
+    speed_mult: 1.2
+    bonus_gold: 50
+
+  - wave: 15
+    name: "Assimilation Swarm"
+    description: "Swarm of drones with elite assimilators"
+    composition:
+      Drone: 20
+      Assimilator: 5
+    hp_mult: 2.0
+    speed_mult: 1.0
+    bonus_gold: 80
+
+  - wave: 20
+    name: "Apex Protocol"
+    description: "Queen-class threats converge"
+    composition:
+      Assimilator: 10
+      Adaptor: 5
+      Harvester: 5
+    hp_mult: 2.5
+    speed_mult: 1.3
+    bonus_gold: 120

@@ -89,6 +89,7 @@ class EconomyManager:
                     self.game.merge_tower_2 = None
                     self.game.merge_preview = None
                     self.game.egrem_preview = False
+                    self.game.incompatible_preview = False
                     self.reset_egrem_consecutive()
                     return True
             return False
@@ -150,6 +151,20 @@ class EconomyManager:
     def select_for_merge(self, bench_idx, frame=0):
         if bench_idx < 0 or bench_idx >= 10 or self.game.bench[bench_idx] is None:
             return False
+
+        # Clear stale selection: indices can point to empty slots after merge/egrem
+        # if any code path failed to clear them, or due to bench reordering
+        if self.game.merge_tower_1 is not None and self.game.bench[self.game.merge_tower_1] is None:
+            self.game.merge_tower_1 = self.game.merge_tower_2 = None
+            self.game.merge_preview = None
+            self.game.egrem_preview = False
+            self.game.incompatible_preview = False
+            self.game.selected_tower = None
+        if self.game.merge_tower_2 is not None and self.game.bench[self.game.merge_tower_2] is None:
+            self.game.merge_tower_2 = None
+            self.game.merge_preview = None
+            self.game.egrem_preview = False
+
         if self.game.merge_tower_1 is None:
             self.game.merge_tower_1 = bench_idx
             self.game.selected_tower = bench_idx  # Set for placement preview
@@ -159,9 +174,11 @@ class EconomyManager:
         # Clicking an already-selected card deselects it
         if bench_idx == self.game.merge_tower_1:
             self.game.merge_tower_1 = None
+            self.game.merge_tower_2 = None  # Keep selection state consistent
             self.game.selected_tower = None
             self.game.merge_preview = None
             self.game.egrem_preview = False
+            self.game.incompatible_preview = False
             self.game.current_merge_cost = 0
             self.reset_egrem_consecutive()
             return True
@@ -169,24 +186,29 @@ class EconomyManager:
             self.game.merge_tower_2 = None
             self.game.merge_preview = None
             self.game.egrem_preview = False
+            self.game.incompatible_preview = False
             self.game.current_merge_cost = 0
             self.reset_egrem_consecutive()
             return True
         t1 = self.game.bench[self.game.merge_tower_1]
         t2 = self.game.bench[bench_idx]
-        same_tier = t1.get_merge_tier() == t2.get_merge_tier()
-        # Third card: replace second selection (keep first), then same-tier → preview, different → egrem
         self.game.merge_tower_2 = bench_idx
         tier1 = t1.get_merge_tier()
         tier2 = t2.get_merge_tier()
         self.game.current_merge_cost = (tier1 * 10) + (tier2 * 10)
-        if same_tier:
+        if Tower.can_merge(t1, t2):
             self.game.merge_preview = Tower.merge_towers(t1, t2)
             self.game.egrem_preview = False
             self.reset_egrem_consecutive()
             return True
-        # Different tier: trigger egrem attempt (cost, flash, maybe create egrem tower)
-        return self._try_egrem(frame)
+        if tier1 != tier2:
+            return self._try_egrem(frame)
+        # Same tier but no hybrid match - show "Incompatible" for ~2 seconds
+        self.game.incompatible_preview = True
+        self.game.incompatible_show_until = frame + 120
+        self.game.merge_preview = None
+        self.game.egrem_preview = False
+        return True
 
     def _try_egrem(self, frame):
         """Attempt egrem (wrong-tier merge). Cost (tier1*10 + tier2*10) * 1.25; shows preview for confirmation."""
@@ -247,6 +269,7 @@ class EconomyManager:
         self.game.merge_tower_2 = None
         self.game.merge_preview = None
         self.game.egrem_preview = False
+        self.game.incompatible_preview = False
         self.game.selected_tower = None
         self.game.current_merge_cost = 0
         self.game.egrem_consecutive = 0
@@ -254,6 +277,28 @@ class EconomyManager:
         self.game.egrem_total_spent = 0
         self.game.egrem_flash_until = 0
         self.game.egrem_flash_bench_idx = None
+
+    def get_incompatible_preview_info(self, frame):
+        """Return dict for drawing 'Incompatible' visual, or None. Auto-clears when expired."""
+        if not self.game.incompatible_preview or self.game.merge_tower_1 is None or self.game.merge_tower_2 is None:
+            return None
+        if frame >= self.game.incompatible_show_until:
+            self.game.incompatible_preview = False
+            self.game.merge_tower_1 = self.game.merge_tower_2 = None
+            self.game.selected_tower = None
+            return None
+        idx1, idx2 = min(self.game.merge_tower_1, self.game.merge_tower_2), max(self.game.merge_tower_1, self.game.merge_tower_2)
+        return {
+            "idx1": idx1,
+            "idx2": idx2,
+            "label": "Incompatible",
+            "line_color_outer": (80, 0, 0),
+            "line_color_inner": (200, 50, 50),
+            "line_width_outer": 8,
+            "line_width_inner": 5,
+            "label_bg_color": (120, 30, 30),
+            "label_border_color": (200, 60, 60),
+        }
 
     def confirm_merge(self):
         if None in (self.game.merge_tower_1, self.game.merge_tower_2, self.game.merge_preview):
@@ -286,12 +331,14 @@ class EconomyManager:
         self.game.selected_tower = None
         self.game.current_merge_cost = 0
         self.game.egrem_preview = False
+        self.game.incompatible_preview = False
         return True
 
     def cancel_merge(self):
         self.game.merge_tower_1 = self.game.merge_tower_2 = self.game.merge_preview = self.game.selected_tower = None
         self.game.current_merge_cost = 0
         self.game.egrem_preview = False
+        self.game.incompatible_preview = False
         self.reset_egrem_consecutive()
 
     def place_tower(self, gx, gy, bench_idx=None):
@@ -310,6 +357,7 @@ class EconomyManager:
         self.game.selected_tower = None
         self.game.merge_tower_1 = self.game.merge_tower_2 = self.game.merge_preview = None
         self.game.egrem_preview = False
+        self.game.incompatible_preview = False
         self.reset_egrem_consecutive()
         return True
 
@@ -322,6 +370,7 @@ class EconomyManager:
         self.game.bench.insert(idx, None)  # keep order
         self.game.selected_tower = self.game.merge_tower_1 = self.game.merge_tower_2 = self.game.merge_preview = None
         self.game.egrem_preview = False
+        self.game.incompatible_preview = False
         self.reset_egrem_consecutive()
 
     def sell_tower_from_grid(self, gx, gy):
