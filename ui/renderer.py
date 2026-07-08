@@ -3,6 +3,7 @@ import pygame
 import json
 from datetime import datetime
 from models.tower import Tower
+from data.upgrades import UPGRADE_DEFS
 from ui.swarm_fx import SwarmFXManager
 from config import log_debug
 
@@ -260,6 +261,7 @@ class Renderer:
         self._draw_merge_preview(frame)
         self._draw_right_panel()
         self._draw_upgrade_dialog()
+        self._draw_tower_stats_panel()
         self._draw_enemy_stats()
         self._draw_grid()
         self._draw_range_preview()
@@ -327,9 +329,10 @@ class Renderer:
         self.swarm_fx.draw(self.screen)
 
     def _draw_shop(self):
-        """Draw the shop section."""
+        """Draw the towers-only shop section."""
         pygame.draw.rect(self.screen, self.SHOP_BG, (0, 0, self.GRID_W, self.SHOP_H))
         pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H), (self.GRID_W, self.SHOP_H), 2)
+        self.screen.blit(self.font_s.render("SHOP", True, self.TEXT), (15, 2))
 
         for i in range(5):
             x = 15 + i * 80
@@ -339,49 +342,15 @@ class Renderer:
             pygame.draw.rect(self.screen, col, (x, y, 70, 100))
             pygame.draw.rect(self.screen, self.TEXT, (x, y, 70, 100), 1 if card else 2)
             if card:
-                if "tile_data" in card:
-                    tile = card["tile_data"]
-                    self.screen.blit(self.font_s.render(tile["name"][:10], True, self.TEXT), (x+5, y+5))
-                    self.screen.blit(self.font_s.render(f"{tile['width']}x{tile['height']}", True, self.TEXT), (x+5, y+20))
-                    # Draw mini path preview
-                    path_grid = tile["path_grid"]
-                    cell_size = 8
-                    start_x = x + 35 - (len(path_grid[0]) * cell_size) // 2
-                    start_y = y + 35
-                    for py in range(len(path_grid)):
-                        for px in range(len(path_grid[py])):
-                            if path_grid[py][px]:
-                                pygame.draw.rect(self.screen, self.PATH, (start_x + px*cell_size, start_y + py*cell_size, cell_size, cell_size))
-                    self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x+5, y+75))
-                elif "name" in card:
-                    # Upgrade card
-                    name = card["name"]
-                    desc = card["desc"]
-                    self.screen.blit(self.font_s.render(name[:10], True, self.TEXT), (x+5, y+5))
-                    # Show short description
-                    self.screen.blit(self.font_s.render(desc[:12], True, (180, 180, 200)), (x+5, y+20))
-                    self.screen.blit(self.font_s.render(desc[12:24] if len(desc) > 12 else "", True, (180, 180, 200)), (x+5, y+35))
-                    self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x+5, y+75))
-                else:
-                    # Tower card
-                    self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (x+5, y+10))
-                    self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x+5, y+75))
+                self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (x + 5, y + 10))
+                self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x + 5, y + 75))
 
-        # Shop mode toggle (moved above refresh button)
-        tx = 15 + 400
-        ty = 15
-        log_debug("Drawing shop toggle", {"x": tx, "y": ty, "width": 35, "height": 35, "mode": self.game.shop_mode}, location="renderer.py:_draw_shop")
-        pygame.draw.rect(self.screen, self.CARD_BG, (tx, ty, 35, 35))
-        pygame.draw.rect(self.screen, self.TEXT, (tx, ty, 35, 35), 1)
-        mode_char = "T" if self.game.shop_mode == "towers" else ("M" if self.game.shop_mode == "tiles" else "U")
-        self.screen.blit(self.font_s.render(mode_char, True, self.TEXT), (tx+10, ty+10))
-
-        # Reroll (moved below shop toggle)
+        # Reroll refreshes all 5 tower offers
         rx = 15 + 400
-        ry = 65
+        ry = 40
         pygame.draw.rect(self.screen, self.CARD_BG, (rx, ry, 35, 35))
         pygame.draw.rect(self.screen, self.TEXT, (rx, ry, 35, 35), 1)
-        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rx+10, ry+10))
+        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rx + 10, ry + 10))
 
     def _draw_bench(self, frame):
         """Draw the bench section."""
@@ -450,7 +419,7 @@ class Renderer:
         """Draw the map tile bench."""
         pygame.draw.rect(self.screen, self.SHOP_BG, (0, self.map_bench_y - 10, 280, 100))
         pygame.draw.line(self.screen, self.GRID, (0, self.map_bench_y - 10), (280, self.map_bench_y - 10), 2)
-        self.screen.blit(self.font_s.render("MAP TILES", True, self.TEXT), (15, self.map_bench_y - 5))
+        self.screen.blit(self.font_s.render("MAP TILES (egrem drops)", True, self.TEXT), (15, self.map_bench_y - 5))
 
         for i in range(3):
             x = self.map_bench_x + i * 80
@@ -473,7 +442,7 @@ class Renderer:
 
         pygame.draw.rect(self.screen, self.SHOP_BG, (self.GRID_W, upgrade_bench_y - 10, self.PANEL_RIGHT_W, 100))
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, upgrade_bench_y - 10), (self.WIDTH, upgrade_bench_y - 10), 2)
-        self.screen.blit(self.font_s.render("UPGRADES", True, self.TEXT), (self.GRID_W + 15, upgrade_bench_y - 5))
+        self.screen.blit(self.font_s.render("UPGRADES (boss loot)", True, self.TEXT), (self.GRID_W + 15, upgrade_bench_y - 5))
 
         for i in range(3):
             x = upgrade_bench_x + i * 55
@@ -494,7 +463,7 @@ class Renderer:
                 self.screen.blit(self.font_s.render(name, True, self.TEXT), (x+3, y+5))
                 self.screen.blit(self.font_s.render(f"${u.get('cost', 0)}", True, self.TEXT), (x+3, y+60))
 
-        hint_text = "Click or press 1-3 to select"
+        hint_text = "Boss loot · click or 1-3"
         self.screen.blit(self.font_s.render(hint_text, True, (160, 160, 180)), (self.GRID_W + 15, upgrade_bench_y + 85))
 
     def _draw_rotate_button(self):
@@ -580,10 +549,125 @@ class Renderer:
                 cost_surf = self.font_s.render(f"${preview_info['cost']}", True, preview_info.get("cost_color", self.TEXT))
                 self.screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
 
+    def stats_toggle_rect(self):
+        """Placed-tower stats screen toggle (must match _draw_right_panel)."""
+        return pygame.Rect(self.GRID_W + 116, 16, 58, 20)
+
+    def _tower_stats_layout(self):
+        bottom_margin = 8
+        outer = pygame.Rect(self.GRID_W + 8, 162, 164, self.HEIGHT - 162 - bottom_margin)
+        head = 22
+        close_h = 24
+        pad = 4
+        inner = pygame.Rect(
+            outer.x + pad,
+            outer.y + head,
+            outer.w - 2 * pad,
+            outer.h - head - close_h - pad - 4,
+        )
+        close_r = pygame.Rect(outer.x + 24, outer.bottom - close_h - 6, outer.w - 48, close_h)
+        return outer, inner, close_r
+
+    def tower_stats_close_rect(self):
+        return self._tower_stats_layout()[2]
+
+    def _tower_stats_lines_for_tower(self, t, total_last_damage, dur_frames):
+        lines = []
+        dname = t.get_display_name() if hasattr(t, "get_display_name") else t.base_type
+        lines.append(f"{dname} @({t.x},{t.y})")
+        lines.append(f"{t.base_type} | {t.fire_type}")
+        rng = "Glbl" if (t.fire_type == "Overwatch" or t.range >= 90) else str(t.range)
+        lines.append(f"D:{t.dmg} R:{rng} FR:{t.fire_rate}")
+        lines.append(f"Heat {t.heat:.1f}/{t.max_heat:.0f}  CD:{t.cooldown}")
+        purity_s = f"{t.calculate_purity()}%" if t.merge_generation >= 1 else "-"
+        lines.append(f"T{t.merge_generation} Purity:{purity_s} ${t.gold_invested}")
+        if dur_frames > 0:
+            dps = t.damage_dealt_last_wave * 60.0 / max(1, dur_frames)
+            lines.append(f"LastW: {t.damage_dealt_last_wave} dmg  DPS~{dps:.1f}")
+        else:
+            lines.append("LastW: -  DPS: -")
+        lines.append(f"Kills L/W:{t.kills_last_wave}  Now:{t.damage_dealt_this_wave}d/{t.kills_this_wave}k")
+        if total_last_damage > 0:
+            pct = 100.0 * t.damage_dealt_last_wave / total_last_damage
+            lines.append(f"Share last W: {pct:.0f}%")
+        if t.fire_rate > 0 and t.fire_type not in ("Radius", "Spawner", "Beam"):
+            paper = t.dmg * 60.0 / t.fire_rate
+            lines.append(f"Paper DPS~{paper:.1f} (60fps)")
+        for uid in t.upgrades[:4]:
+            nm = UPGRADE_DEFS.get(uid, {}).get("name", uid)
+            lines.append(f"+ {nm}"[:24])
+        if len(t.upgrades) > 4:
+            lines.append(f"+ {len(t.upgrades) - 4} more")
+        return lines
+
+    def _tower_stats_content_height(self):
+        towers = sorted(self.game.towers, key=lambda t: (t.y, t.x))
+        dur = getattr(self.game, "last_wave_duration_frames", 0)
+        total_ld = sum(t.damage_dealt_last_wave for t in towers)
+        h = 14 * 2 + 4
+        for t in towers:
+            h += len(self._tower_stats_lines_for_tower(t, total_ld, dur)) * 14 + 6
+        return h
+
+    def tower_stats_max_scroll(self):
+        if not getattr(self.game, "tower_stats_open", False):
+            return 0
+        _, inner, _ = self._tower_stats_layout()
+        return max(0, self._tower_stats_content_height() - inner.height)
+
+    def _draw_tower_stats_panel(self):
+        if not getattr(self.game, "tower_stats_open", False):
+            return
+        outer, inner, close_r = self._tower_stats_layout()
+        max_s = self.tower_stats_max_scroll()
+        self.game.tower_stats_scroll = max(0, min(max_s, self.game.tower_stats_scroll))
+
+        pygame.draw.rect(self.screen, (35, 35, 50), outer)
+        pygame.draw.rect(self.screen, self.TEXT, outer, 2)
+        self.screen.blit(self.font.render("Placed towers", True, self.TEXT), (outer.x + 6, outer.y + 4))
+
+        towers = sorted(self.game.towers, key=lambda t: (t.y, t.x))
+        dur = self.game.last_wave_duration_frames
+        total_ld = sum(t.damage_dealt_last_wave for t in towers)
+
+        prev_clip = self.screen.get_clip()
+        self.screen.set_clip(inner)
+        y = inner.y - self.game.tower_stats_scroll
+        x = inner.x + 2
+
+        self.screen.blit(self.font_s.render(f"Count: {len(towers)}", True, self.TEXT), (x, y))
+        y += 14
+        self.screen.blit(self.font_s.render(f"Total last wave dmg: {total_ld}", True, self.TEXT), (x, y))
+        y += 14 + 4
+
+        if not towers:
+            self.screen.blit(self.font_s.render("No towers on map.", True, (160, 160, 180)), (x, y))
+
+        for t in towers:
+            for line in self._tower_stats_lines_for_tower(t, total_ld, dur):
+                if y + 14 > inner.y and y < inner.bottom:
+                    self.screen.blit(self.font_s.render(line, True, self.TEXT), (x, y))
+                y += 14
+            y += 6
+
+        self.screen.set_clip(prev_clip)
+
+        pygame.draw.rect(self.screen, self.PANEL_BTN, close_r)
+        pygame.draw.rect(self.screen, self.TEXT, close_r, 1)
+        cl = self.font_s.render("Close", True, self.TEXT)
+        self.screen.blit(cl, (close_r.centerx - cl.get_width() // 2, close_r.centery - 6))
+
     def _draw_right_panel(self):
         """Draw the right panel with game stats and controls."""
         pygame.draw.rect(self.screen, self.PANEL_BG, (self.GRID_W, 0, self.PANEL_RIGHT_W, self.SHOP_H + self.BENCH_H))
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, 0), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
+
+        st = self.stats_toggle_rect()
+        col_st = self.PANEL_BTN_SEL if self.game.tower_stats_open else self.PANEL_BTN
+        pygame.draw.rect(self.screen, col_st, st)
+        pygame.draw.rect(self.screen, self.TEXT, st, 1)
+        st_lbl = self.font_s.render("Stats", True, self.TEXT)
+        self.screen.blit(st_lbl, (st.centerx - st_lbl.get_width() // 2, st.centery - 6))
 
         px = self.GRID_W + 14
         py = 18  # Starting Y position
@@ -643,6 +727,8 @@ class Renderer:
 
     def _draw_upgrade_dialog(self):
         """Draw the upgrade dialog when a tower is selected."""
+        if getattr(self.game, "tower_stats_open", False):
+            return
         if self.game.upgrade_dialog_tower is None:
             return
 
@@ -688,7 +774,6 @@ class Renderer:
             self.screen.blit(self.font_s.render("Upgrades:", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
             for uid in t.upgrades:
                 tower_stats_y += 16
-                from data.upgrades import UPGRADE_DEFS
                 name = UPGRADE_DEFS.get(uid, {}).get("name", uid)
                 self.screen.blit(self.font_s.render(f"- {name}", True, (180, 180, 200)), (self.GRID_W + 14, tower_stats_y))
 
@@ -704,6 +789,8 @@ class Renderer:
 
     def _draw_enemy_stats(self):
         """Draw enemy stats when an enemy is selected."""
+        if getattr(self.game, "tower_stats_open", False):
+            return
         if self.game.selected_enemy is None:
             return
 
@@ -954,12 +1041,18 @@ class Renderer:
                 pygame.draw.rect(self.screen, self.HP_FILL, (c[0]-20*self.zoom_level, c[1]-30*self.zoom_level, bar_width*ratio, bar_height))
 
     def _draw_wave_bonus(self, frame):
-        """Draw wave bonus text."""
-        if frame < self.game.wave_bonus_show_until:
-            txt = self.font.render(self.game.wave_bonus_text, True, (100, 255, 140))
-            tw, th = txt.get_size()
-            pygame.draw.rect(self.screen, (0, 0, 0, 180), (self.WIDTH//2 - tw//2 - 20, 60, tw+40, th+20))
-            self.screen.blit(txt, (self.WIDTH//2 - tw//2, 70))
+        """Draw wave bonus / reward toast text."""
+        text = None
+        if getattr(self.game, "reward_toast_until", 0) > frame and getattr(self.game, "reward_toast_text", ""):
+            text = self.game.reward_toast_text
+        elif frame < self.game.wave_bonus_show_until:
+            text = self.game.wave_bonus_text
+        if not text:
+            return
+        txt = self.font.render(text, True, (100, 255, 140))
+        tw, th = txt.get_size()
+        pygame.draw.rect(self.screen, (0, 0, 0, 180), (self.WIDTH // 2 - tw // 2 - 20, 60, tw + 40, th + 20))
+        self.screen.blit(txt, (self.WIDTH // 2 - tw // 2, 70))
 
     def _draw_game_over(self):
         """Draw game over screen."""

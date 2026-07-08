@@ -79,6 +79,11 @@ class Game:
         self.upgrade_dialog_tower = None  # Tower on grid when upgrade dialog is open
         self.upgrade_dialog_choices = []  # Current 3 upgrade options when dialog is open
         self.selected_enemy = None  # Enemy selected for inspection
+        self.tower_stats_open = False
+        self.tower_stats_scroll = 0
+        self.current_frame = 0
+        self.wave_start_frame = 0
+        self.last_wave_duration_frames = 0
         # Egrem (wrong-tier merge) state
         self.egrem_preview = False
         self.egrem_consecutive = 0
@@ -89,9 +94,10 @@ class Game:
         self.incompatible_preview = False  # Show "Incompatible" when same-tier towers can't merge
         self.incompatible_show_until = 0   # frame when to auto-clear
         self.auto_mode = False  # Auto wave toggle
-        self.shop_mode = "towers"  # "towers" or "tiles"
         self.web_mode = web_mode  # Flag for reduced load in browser
         self.minimal_mode = minimal_mode  # True = reduced features for debugging/performance
+        self.reward_toast_text = ""
+        self.reward_toast_until = 0
 
         # Shop Power Level and XP system (disabled in minimal mode)
         if not minimal_mode:
@@ -342,24 +348,22 @@ class Game:
 
         tile_placement_log("place_map_tile_ordered", {"ordered": ordered, "path_end": map_end, "new_end": exit_cell})
 
-        # Update PathGraph with new tiles
+        # Update PathGraph with new tiles (keep graph in sync for tooling/debug)
         for pos in ordered:
             self.path_graph.add_node(pos)
         for i in range(len(ordered) - 1):
-            self.path_graph.add_edge(ordered[i], ordered[i+1])
+            self.path_graph.add_edge(ordered[i], ordered[i + 1])
         if ordered and self.path:
             self.path_graph.add_edge(self.path[-1], ordered[0])
 
-        # Update path end so BFS computes the full extended path
         new_end = ordered[-1] if ordered else (exit_cell or map_end)
         if new_end is not None:
             self.path_graph.set_end(new_end)
 
-        # Recompute ordered path (start to new end)
-        # Mutate in place so enemies/spawn_queue (which hold path refs) see the update
-        new_path = self.path_graph.get_ordered_path()
-        self.path.clear()
-        self.path.extend(new_path)
+        # Append-only polyline: never clear/rebuild via BFS (Loop tiles can
+        # create cycles that make get_ordered_path() return [] and wipe path).
+        if ordered:
+            self.path.extend(ordered)
         tile_placement_log("place_map_tile_path_updated", {"new_path_length": len(self.path), "new_end": new_end})
 
         # Mark grid cells
@@ -413,13 +417,14 @@ class Game:
                 x, y = self.path[i]
                 self.path[i] = (x + offset_x, y + offset_y)
 
-            # Update path graph
+            # Update path graph (preserve start so BFS remains valid)
             self.path_graph = PathGraph()
             for pos in self.path:
                 self.path_graph.add_node(pos)
             for i in range(len(self.path) - 1):
-                self.path_graph.add_edge(self.path[i], self.path[i+1])
+                self.path_graph.add_edge(self.path[i], self.path[i + 1])
             if self.path:
+                self.path_graph.set_start(self.path[0])
                 self.path_graph.set_end(self.path[-1])
 
             # Update towers

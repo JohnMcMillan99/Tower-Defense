@@ -64,6 +64,11 @@ class Tower:
         self.egrem_spawn_timer = 0    # Frames until next spawn
         self.egrem_spawn_interval = 0 # Interval between spawns
 
+        self.damage_dealt_this_wave = 0
+        self.damage_dealt_last_wave = 0
+        self.kills_this_wave = 0
+        self.kills_last_wave = 0
+
         self._calculate_stats()
 
     def get_traits(self):
@@ -279,6 +284,16 @@ class Tower:
         self.egrem_enemy_types = enemy_types  # Can spawn mixed types
         self.egrem_spawn_timer = 0  # Spawn immediately on first frame of wave
 
+    def _damage_enemy(self, enemy, raw_dmg, attacker_tags=None):
+        """Apply damage; count effective HP removed and kills for per-wave stats."""
+        hp_before = max(0, enemy.health)
+        killed = enemy.take_damage(raw_dmg, attacker_tags)
+        dealt = hp_before - max(0, enemy.health)
+        self.damage_dealt_this_wave += dealt
+        if killed:
+            self.kills_this_wave += 1
+        return killed
+
     def update(self, enemies, current_frame, game):
         if 'stun' in self.status_effects and self.status_effects['stun'] > 0:
             self.status_effects['stun'] -= 1
@@ -294,6 +309,8 @@ class Tower:
             self.cooldown += 12  # overheat penalty
             self.heat = self.max_heat
             # could add visual red glow here
+
+        attacker_tags = self.get_effective_traits() if hasattr(self, "get_effective_traits") else self.get_traits()
 
         if self.fire_type == "Spawner":
             # Egrem towers spawn enemies on timer
@@ -317,7 +334,7 @@ class Tower:
                     if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
                         for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
                             if e.alive and not e.leaked:
-                                killed = e.take_damage(self.dmg)
+                                killed = self._damage_enemy(e, self.dmg, attacker_tags)
                                 if killed:
                                     killed_any = True
             return (None, killed_any) if killed_any else None
@@ -325,7 +342,7 @@ class Tower:
         elif self.fire_type == "Track":
             # Damage enemies on path segments in the selected direction
             killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # W, E, N, S
             dx, dy = directions[self.track_direction]
             # Find path segments adjacent to tower in that direction
             adjacent_x = self.x + dx
@@ -333,7 +350,7 @@ class Tower:
             if 0 <= adjacent_x < len(game.enemy_grid[0]) and 0 <= adjacent_y < len(game.enemy_grid):
                 for e in game.enemy_grid[adjacent_y][adjacent_x][:]:
                     if e.alive and not e.leaked:
-                        killed = e.take_damage(self.dmg)
+                        killed = self._damage_enemy(e, self.dmg, attacker_tags)
                         if killed:
                             killed_any = True
             self.cooldown = self.fire_rate
@@ -342,7 +359,7 @@ class Tower:
         elif self.fire_type == "DirectionalBeam":
             # Shoot a beam in one direction, hitting all tiles in that line
             killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # W, E, N, S
             dx, dy = directions[self.track_direction]
             for dist in range(1, self.range + 1):
                 nx = self.x + dx * dist
@@ -350,13 +367,13 @@ class Tower:
                 if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
                     for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
                         if e.alive and not e.leaked:
-                            killed = e.take_damage(self.dmg)
+                            killed = self._damage_enemy(e, self.dmg, attacker_tags)
                             if killed:
                                 killed_any = True
             self.cooldown = self.fire_rate
             return (None, killed_any) if killed_any else None
 
-        elif self.fire_type == "Beam":
+        elif self.fire_type in ("Beam", "TargetBeam"):
             # Find target, damage increases over time on same target
             target = None
             best_dist = float('inf')
@@ -390,7 +407,7 @@ class Tower:
                     dmg_mult = 1.0
                     frames = 1
                 actual_dmg = int(self.dmg * dmg_mult)
-                killed = target.take_damage(actual_dmg)
+                killed = self._damage_enemy(target, actual_dmg, attacker_tags)
                 self.beam_targets[enemy_id] = (dmg_mult, frames)
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
@@ -429,7 +446,7 @@ class Tower:
                         break
 
             if target:
-                killed = target.take_damage(self.dmg)
+                killed = self._damage_enemy(target, self.dmg, attacker_tags)
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
                 self.last_shot_frame = current_frame

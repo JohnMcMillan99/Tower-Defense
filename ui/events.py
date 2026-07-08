@@ -46,12 +46,19 @@ class EventHandler:
                 self.game.selected_upgrade = slot_idx if self.game.selected_upgrade != slot_idx else None
 
     def _handle_mousewheel(self, event):
-        """Handle mouse wheel zoom."""
+        """Handle mouse wheel zoom (or tower stats scroll over right panel)."""
+        mx, my = pygame.mouse.get_pos()
+        if getattr(self.game, "tower_stats_open", False) and mx >= self.renderer.GRID_W:
+            max_s = self.renderer.tower_stats_max_scroll()
+            self.game.tower_stats_scroll = max(
+                0, min(max_s, self.game.tower_stats_scroll - event.y * 18)
+            )
+            return
+
         old_zoom = self.renderer.zoom_level
         self.renderer.zoom_level = max(0.5, min(2.0, self.renderer.zoom_level + event.y * 0.1))
 
         # Zoom towards mouse cursor
-        mx, my = pygame.mouse.get_pos()
         if my >= self.renderer.grid_y and mx < self.renderer.GRID_W:
             wx, wy = self.renderer.screen_to_world(mx, my)
             self.renderer.camera_x = mx - (wx * self.renderer.TILE * self.renderer.zoom_level)
@@ -71,18 +78,42 @@ class EventHandler:
         if event.button == 1:
             self._handle_left_click(mx, my, frame)
 
+    def restart_game(self):
+        """Rebuild Game and rebind renderer after game over."""
+        from core.game import Game
+        web_mode = getattr(self.game, "web_mode", False)
+        minimal_mode = getattr(self.game, "minimal_mode", False)
+        new_game = Game(web_mode=web_mode, minimal_mode=minimal_mode)
+        self.game = new_game
+        self.renderer.game = new_game
+        if hasattr(self.renderer, "update_dimensions"):
+            self.renderer.update_dimensions()
+        self.renderer.camera_x = 0
+        self.renderer.camera_y = 0
+        self.renderer.zoom_level = 1.0
+
     def _handle_left_click(self, mx, my, frame):
         """Handle left mouse button clicks."""
         log_debug("Left click detected", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_left_click")
+
+        if self.game.game_over:
+            self.restart_game()
+            return
 
         # Upgrade dialog (when open)
         if self.game.upgrade_dialog_tower is not None:
             self._handle_upgrade_dialog_click(mx, my)
             return
 
-        # Right panel: Play/Pause, Next Wave, Auto
+        # Upgrade bench (bottom-right) before right-panel early-return
+        upgrade_bench_y = self.renderer.HEIGHT - 100
+        if mx >= self.renderer.GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
+            self._handle_upgrade_bench_click(mx, my)
+            return
+
+        # Right panel: Play/Pause, Next Wave, Auto, Stats
         if mx >= self.renderer.GRID_W:
-            self._handle_right_panel_click(mx, my)
+            self._handle_right_panel_click(mx, my, frame)
             return
 
         # Shop
@@ -100,11 +131,6 @@ class EventHandler:
                 and mx >= self.renderer.map_bench_x and mx < self.renderer.map_bench_x + 3 * 80):
             self._handle_map_bench_click(mx, my)
             return
-
-        # Upgrade Bench
-        upgrade_bench_y = self.renderer.HEIGHT - 100
-        if mx >= self.renderer.GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
-            self._handle_upgrade_bench_click(mx, my)
 
         # Grid
         if my >= self.renderer.grid_y and mx < self.renderer.GRID_W:
@@ -142,9 +168,21 @@ class EventHandler:
             # Clicked outside dialog
             self.game.upgrade_dialog_tower = None
 
-    def _handle_right_panel_click(self, mx, my):
+    def _handle_right_panel_click(self, mx, my, frame):
         """Handle clicks in the right panel."""
         log_debug("Right panel click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_right_panel_click")
+
+        if self.renderer.stats_toggle_rect().collidepoint(mx, my):
+            self.game.tower_stats_open = not self.game.tower_stats_open
+            if self.game.tower_stats_open:
+                self.game.upgrade_dialog_tower = None
+                self.game.selected_enemy = None
+                self.game.tower_stats_scroll = 0
+            return
+
+        if self.game.tower_stats_open and self.renderer.tower_stats_close_rect().collidepoint(mx, my):
+            self.game.tower_stats_open = False
+            return
 
         # Calculate button positions to match the drawing code
         px = self.renderer.GRID_W + 14
@@ -182,7 +220,7 @@ class EventHandler:
             self.game.paused = not self.game.paused
         elif next_rect.collidepoint(mx, my):
             log_debug("Next Wave button clicked", location="events.py:_handle_right_panel_click")
-            self.game.wave_manager.start_next_wave()
+            self.game.wave_manager.start_next_wave(frame)
         elif auto_rect.collidepoint(mx, my):
             log_debug("Auto button clicked", location="events.py:_handle_right_panel_click")
             self.game.auto_mode = not self.game.auto_mode
@@ -190,35 +228,19 @@ class EventHandler:
             log_debug("No button clicked", location="events.py:_handle_right_panel_click")
 
     def _handle_shop_click(self, mx, my):
-        """Handle clicks in the shop."""
+        """Handle clicks in the towers-only shop."""
         log_debug("Shop click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_shop_click")
-
-        # Shop mode toggle
-        tx = 15 + 400
-        ty = 15
-        log_debug("Shop toggle check", {"toggle_x": tx, "toggle_y": ty, "toggle_w": 35, "toggle_h": 35}, location="events.py:_handle_shop_click")
-        if tx <= mx <= tx + 35 and ty <= my <= ty + 35:
-            log_debug("Shop toggle clicked", location="events.py:_handle_shop_click")
-            if self.game.shop_mode == "towers":
-                self.game.shop_mode = "tiles"
-            elif self.game.shop_mode == "tiles":
-                self.game.shop_mode = "upgrades"
-            else:
-                self.game.shop_mode = "towers"
-            self.game.shop = [None] * 5
-            self.game.economy.generate_shop()
-            return
 
         for i in range(5):
             x = 15 + i * 80
             y = 15
-            if x <= mx <= x+70 and y <= my <= y+100:
+            if x <= mx <= x + 70 and y <= my <= y + 100:
                 self.game.economy.move_to_bench(i)
                 return
 
-        # Reroll
+        # Reroll (refreshes all 5 tower offers)
         rx = 15 + 400
-        ry = 65
+        ry = 40
         if rx <= mx <= rx + 35 and ry <= my <= ry + 35:
             self.game.economy.reroll_shop()
 
@@ -275,8 +297,8 @@ class EventHandler:
                     self.game.selected_tile_rotation = 0
                     return
 
-        # Rotate buttons
-        rot_x = self.renderer.map_bench_x + 3*80 + 10
+        # Rotate buttons (must match renderer._draw_rotate_button)
+        rot_x = self.renderer.map_bench_x + 2 * 80 + 10
         rot_y = self.renderer.map_bench_y + 5
         in_rotate_region = rot_y <= my <= rot_y + 26 and (rot_x <= mx <= rot_x + 26 or rot_x + 34 <= mx <= rot_x + 60)
         if self.game.selected_map_tile is not None and in_rotate_region:
@@ -360,6 +382,7 @@ class EventHandler:
                     else:
                         self.game.upgrade_dialog_tower = t
                         self.game.upgrade_dialog_choices = self.game.economy.get_upgrade_choices(t)
+                        self.game.tower_stats_open = False
                     self.game.selected_enemy = None
                     return
 
