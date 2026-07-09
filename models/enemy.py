@@ -29,7 +29,9 @@ class Enemy:
         self.leaked = False
         self.move_counter = 0.0
         self.is_egrem_spawned = is_egrem_spawned
-        self.debuffs = {}  # debuff_type: {'amount': val, 'frames_left': int}
+        self.debuffs = {}
+        self.resistances = {}  # tag -> damage multiplier (< 1.0 = resistant)
+        self.speed_mult = 1.0  # adaptation speed modifier
         self.web_mode = web_mode
         self._calculate_stats()
 
@@ -52,10 +54,10 @@ class Enemy:
     def move(self):
         if not self.alive or self.leaked:
             return
-        increment = 1.0
+        increment = self.speed_mult
         if 'slow' in self.debuffs:
             slow_pct = self.debuffs['slow']['amount'] / 100.0
-            increment = 1.0 * (1 - slow_pct)
+            increment *= (1 - slow_pct)
             self.debuffs['slow']['frames_left'] -= 1
             if self.debuffs['slow']['frames_left'] <= 0:
                 del self.debuffs['slow']
@@ -72,12 +74,52 @@ class Enemy:
             return self.path[self.position_index]
         return None
 
-    def take_damage(self, dmg):
+    def take_damage(self, dmg, attacker_tags=None):
+        """Apply damage, optionally reduced by resistances matching attacker_tags."""
+        if attacker_tags:
+            dmg = int(dmg * self.get_resistance(attacker_tags))
         self.health -= dmg
         if self.health <= 0:
             self.alive = False
             return True
         return False
+
+    def adapt_to_profile(self, profile, resistance_tables=None):
+        """Set resistances from strategy profile and YAML resistance_tables.
+
+        *profile* is a dict[str, float] from StrategyAnalyzer.analyze().
+        *resistance_tables* is dict from enemies.yaml (optional).
+        """
+        if not profile:
+            return
+        rt = resistance_tables or {}
+        hybrid_cfg = rt.get("hybrid_exposure", {})
+        factor_per_pt = hybrid_cfg.get("factor_per_point", 0.05)
+        max_factor = hybrid_cfg.get("max_factor", 0.5)
+        target_tags = hybrid_cfg.get("applies_to_tags", ["hybrid"])
+
+        hybrid_exp = profile.get("_hybrid_exposure", 0.0)
+        factor = min(hybrid_exp * factor_per_pt, max_factor)
+
+        for tag in target_tags:
+            self.resistances[tag] = max(0.3, 1.0 - factor)
+
+        speed_boost = hybrid_cfg.get("speed_boost_per_point", 0.02)
+        max_speed_boost = hybrid_cfg.get("max_speed_boost", 0.4)
+        self.speed_mult = 1.0 + min(hybrid_exp * speed_boost, max_speed_boost)
+
+    def get_resistance(self, attacker_tags):
+        """Return combined damage multiplier given the attacker's trait tags.
+
+        Multipliers stack multiplicatively; lower = more resistant.
+        """
+        if not self.resistances or not attacker_tags:
+            return 1.0
+        mult = 1.0
+        for tag in attacker_tags:
+            if tag in self.resistances:
+                mult *= self.resistances[tag]
+        return mult
 
     def apply_debuff(self, debuff_type, amount, duration):
         if debuff_type not in self.debuffs:

@@ -1,0 +1,91 @@
+traits:
+  # Core tower type traits (from existing system)
+  neural_processor: ["burst", "logic", "targeting"]
+  plasma_capacitor: ["charge", "burst", "overload"]
+  thermal_regulator: ["resist", "heat", "area"]
+  signal_router: ["block", "flow", "control"]
+  quantum_field_gen: ["filter", "magnetic", "global"]
+  nanite_swarm: ["egrem", "spawner", "hybrid"]
+
+  # Purity lineage traits (auto-generated)
+  pure_neural_gen1: ["pure_neural", "pure_lineage", "exponential_bonus"]
+  pure_neural_gen2: ["pure_neural", "pure_lineage", "exponential_bonus", "mastery"]
+  pure_neural_gen3: ["pure_neural", "pure_lineage", "exponential_bonus", "mastery", "apex"]
+  pure_plasma_gen1: ["pure_plasma", "pure_lineage", "exponential_bonus"]
+  pure_plasma_gen2: ["pure_plasma", "pure_lineage", "exponential_bonus", "mastery"]
+  pure_plasma_gen3: ["pure_plasma", "pure_lineage", "exponential_bonus", "mastery", "apex"]
+  pure_thermal_gen1: ["pure_thermal", "pure_lineage", "exponential_bonus"]
+  pure_thermal_gen2: ["pure_thermal", "pure_lineage", "exponential_bonus", "mastery"]
+  pure_thermal_gen3: ["pure_thermal", "pure_lineage", "exponential_bonus", "mastery", "apex"]
+  pure_signal_gen1: ["pure_signal", "pure_lineage", "exponential_bonus"]
+  pure_signal_gen2: ["pure_signal", "pure_lineage", "exponential_bonus", "mastery"]
+  pure_signal_gen3: ["pure_signal", "pure_lineage", "exponential_bonus", "mastery", "apex"]
+  pure_quantum_gen1: ["pure_quantum", "pure_lineage", "exponential_bonus"]
+  pure_quantum_gen2: ["pure_quantum", "pure_lineage", "exponential_bonus", "mastery"]
+  pure_quantum_gen3: ["pure_quantum", "pure_lineage", "exponential_bonus", "mastery", "apex"]
+
+  # Hybrid traits (curated combinations)
+  hybrid_cortex_assimilator: ["hybrid", "neural_plasma", "assimilator", "adaptive"]
+  hybrid_thermal_router: ["hybrid", "thermal_signal", "coordinator", "disruptive"]
+  hybrid_quantum_burst: ["hybrid", "quantum_plasma", "overload", "global_burst"]
+  hybrid_neural_field: ["hybrid", "neural_quantum", "predictive", "field_control"]
+
+trait_bonuses:
+  # Pure lineage bonuses (exponential rewards)
+  pure_lineage:
+    dmg_mult: 2.0  # 2x damage for pure towers
+    range_bonus: 2
+    fire_rate_mult: 1.5
+    purity_requirement: 100
+  exponential_bonus:
+    dmg_mult: 1.0  # Additional stacking multiplier per generation
+    stack_mult: 1.25  # 25% bonus per gen, multiplicative
+  mastery:
+    dmg_mult: 1.5  # Additional mastery bonus at gen 2+
+    resistance: 0.8  # 20% resistance to enemy adaptations
+  apex:
+    dmg_mult: 2.0  # Final apex bonus at gen 3
+    immunity: ["enemy_adaptation"]  # Immune to certain enemy counters
+
+  # Hybrid penalties (strategic risk)
+  hybrid:
+    dmg_mult: 0.8  # 80% damage penalty for hybrids
+    adaptation_penalty: 1.5  # 50% more vulnerable to enemy adaptation
+  neural_plasma:
+    dmg_mult: 1.3  # Partial compensation for hybrid synergy
+    fire_rate_mult: 1.2
+  thermal_signal:
+    range_bonus: 3
+    control_bonus: 1.0  # Enhanced disruption
+  quantum_plasma:
+    global_mult: 1.4  # Enhanced global effects
+  neural_quantum:
+    prediction_bonus: 1.0  # Future prediction mechanics
+
+  # Enemy adaptation targets (for Phase 3)
+  hybrid_exposure:
+    enemy_speed_boost: 0.2  # 20% speed increase vs hybrids
+    enemy_resistance: 0.3  # 30% damage reduction from hybrids
+
+trait_rules:
+  # How traits are auto-generated from tower lineage
+  purity_generation:
+    threshold_100: ["pure_lineage", "exponential_bonus"]
+    threshold_80: ["partial_pure"]
+    threshold_50: ["hybrid_penalty"]
+    threshold_0: ["impure"]
+
+  merge_type_detection:
+    pure: "all_parents_same_type"
+    hybrid: "mixed_parent_types"
+
+  naming_conventions:
+    pure:
+      gen1: "{base_type} Enhanced"
+      gen2: "Advanced {base_type}"
+      gen3: "{base_type} Apex"
+    hybrid:
+      neural_plasma: "Cortex Assimilator"
+      thermal_signal: "Thermal Router"
+      quantum_plasma: "Quantum Burst Engine"
+      neural_quantum: "Neural Field Generator"

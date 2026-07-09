@@ -16,6 +16,14 @@ class DataLoader:
         self.enemies = {}
         self.meta_unlocks = {}
         self.assimilators = {}
+        self.traits = {}
+        self.trait_bonuses = {}
+        self.trait_rules = {}
+        self.hybrid_trees = []
+        self.pure_naming_rules = {}
+        self.augment_rules = {}
+        self.resistance_tables = {}
+        self.event_waves = []
         self._load_data()
 
     def _load_data(self):
@@ -42,6 +50,7 @@ class DataLoader:
                 with open(enemies_file, 'r') as f:
                     data = yaml.safe_load(f)
                     self.enemies = data.get('enemies', {})
+                    self.resistance_tables = data.get('resistance_tables', {})
             else:
                 print(f"Warning: {enemies_file} not found, using fallback data")
                 self._load_fallback_enemies()
@@ -65,6 +74,39 @@ class DataLoader:
             else:
                 print(f"Warning: {assimilators_file} not found, using fallback data")
                 self._load_fallback_assimilators()
+
+            # Load traits data
+            traits_file = os.path.join(self.yaml_dir, 'traits.yaml')
+            if os.path.exists(traits_file):
+                with open(traits_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                    self.traits = data.get('traits', {})
+                    self.trait_bonuses = data.get('trait_bonuses', {})
+                    self.trait_rules = data.get('trait_rules', {})
+            else:
+                print(f"Warning: {traits_file} not found, using fallback data")
+                self._load_fallback_traits()
+
+            # Extract hybrid_trees and pure_naming_rules from merges.yaml top-level
+            merges_file = os.path.join(self.yaml_dir, 'merges.yaml')
+            if os.path.exists(merges_file):
+                with open(merges_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                    self.hybrid_trees = data.get('hybrid_trees', [])
+                    self.pure_naming_rules = data.get('pure_naming_rules', {})
+
+            # Load augment rules
+            augment_file = os.path.join(self.yaml_dir, 'augment_rules.yaml')
+            if os.path.exists(augment_file):
+                with open(augment_file, 'r') as f:
+                    self.augment_rules = yaml.safe_load(f) or {}
+
+            # Load event waves
+            event_file = os.path.join(self.yaml_dir, 'event_waves.yaml')
+            if os.path.exists(event_file):
+                with open(event_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                    self.event_waves = data.get('event_waves', [])
 
         except Exception as e:
             print(f"Error loading YAML data: {e}")
@@ -132,12 +174,55 @@ class DataLoader:
             "stack_mult": {3: 1.2, 5: 1.5}
         }
 
+    def _load_fallback_traits(self):
+        """Fallback trait data if YAML fails to load."""
+        self.traits = {}
+        self.trait_bonuses = {
+            "pure_lineage": {"dmg_mult": 2.0, "range_bonus": 2, "fire_rate_mult": 1.5, "purity_requirement": 100},
+            "exponential_bonus": {"dmg_mult": 1.0, "stack_mult": 1.25},
+            "mastery": {"dmg_mult": 1.5, "resistance": 0.8},
+            "apex": {"dmg_mult": 2.0, "immunity": ["enemy_adaptation"]},
+            "hybrid": {"dmg_mult": 0.8, "adaptation_penalty": 1.5},
+            "hybrid_exposure": {"enemy_speed_boost": 0.2, "enemy_resistance": 0.3},
+        }
+        self.trait_rules = {
+            "purity_generation": {
+                "threshold_100": ["pure_lineage", "exponential_bonus"],
+                "threshold_80": ["partial_pure"],
+                "threshold_50": ["hybrid_penalty"],
+                "threshold_0": ["impure"],
+            },
+            "merge_type_detection": {"pure": "all_parents_same_type", "hybrid": "mixed_parent_types"},
+            "naming_conventions": {
+                "pure": {"gen1": "{base_type} Enhanced", "gen2": "Advanced {base_type}", "gen3": "{base_type} Apex"},
+                "hybrid": {},
+            },
+        }
+        self.hybrid_trees = [
+            {"parents": ["Thermal Regulator", "Plasma Capacitor"], "result": "Thermal Plasma Core",
+             "dmg": 7, "range": 3, "fire_rate": 3, "fire_type": "Ball", "traits": ["thermal_plasma", "hybrid"]},
+            {"parents": ["Neural Processor", "Plasma Capacitor"], "result": "Cortex Assimilator",
+             "dmg": 8, "range": 2, "fire_rate": 2, "fire_type": "TargetBeam", "traits": ["neural_plasma", "hybrid"]},
+            {"parents": ["Thermal Regulator", "Signal Router"], "result": "Thermal Router",
+             "dmg": 5, "range": 4, "fire_rate": 2, "fire_type": "DirectionalBeam", "traits": ["thermal_signal", "hybrid"]},
+            {"parents": ["Quantum Field Gen", "Plasma Capacitor"], "result": "Quantum Burst Engine",
+             "dmg": 6, "range": 50, "fire_rate": 6, "fire_type": "Overwatch", "traits": ["quantum_plasma", "hybrid"]},
+            {"parents": ["Neural Processor", "Quantum Field Gen"], "result": "Neural Field Generator",
+             "dmg": 4, "range": 50, "fire_rate": 5, "fire_type": "TargetBeam", "traits": ["neural_quantum", "hybrid"]},
+        ]
+        self.pure_naming_rules = {
+            "gen1": "{base_type} Enhanced",
+            "gen2": "Advanced {base_type}",
+            "gen3": "{base_type} Apex",
+        }
+
     def _load_fallback_data(self):
         """Load all fallback data."""
         self._load_fallback_towers()
         self._load_fallback_enemies()
         self._load_fallback_meta_unlocks()
         self._load_fallback_assimilators()
+        self._load_fallback_traits()
 
     def get_tower_data(self, tower_type):
         """Get tower data by type."""
@@ -154,6 +239,49 @@ class DataLoader:
     def get_assimilator_data(self):
         """Get assimilator configuration data."""
         return self.assimilators
+
+    def get_traits_data(self):
+        """Get all trait definitions."""
+        return self.traits
+
+    def get_trait_tags(self, trait_name):
+        """Get trait tags for a specific trait."""
+        return self.traits.get(trait_name, [])
+
+    def get_trait_bonuses(self):
+        """Get trait bonus definitions."""
+        return self.trait_bonuses
+
+    def get_trait_rules(self):
+        """Get trait rule definitions."""
+        return self.trait_rules
+
+    def get_hybrid_trees(self):
+        """Get hybrid merge tree definitions."""
+        return self.hybrid_trees
+
+    def get_pure_naming_rules(self):
+        """Get pure tower naming convention rules."""
+        return self.pure_naming_rules
+
+    def get_augment_rules(self):
+        """Get augment/corruption rule definitions."""
+        return self.augment_rules
+
+    def get_resistance_tables(self):
+        """Get enemy resistance table definitions."""
+        return self.resistance_tables
+
+    def get_event_waves(self):
+        """Get event wave definitions."""
+        return self.event_waves
+
+    def get_event_wave(self, wave_num):
+        """Get event wave config for a specific wave number, or None."""
+        for ew in self.event_waves:
+            if ew.get("wave") == wave_num:
+                return ew
+        return None
 
     def get_tower_types(self):
         """Get list of all tower types."""

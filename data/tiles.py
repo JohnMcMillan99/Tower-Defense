@@ -13,6 +13,7 @@ def get_tile_types(minimal_mode=False):
             "entry_side": "W",
             "exit_side": "E",
             "unlock_level": 1,
+            "traits": ["path_short"],
         },
         {
             "name": "Left Turn",
@@ -22,6 +23,7 @@ def get_tile_types(minimal_mode=False):
             "entry_side": "S",
             "exit_side": "E",
             "unlock_level": 1,
+            "traits": ["path_turn"],
         },
         {
             "name": "Right Turn",
@@ -31,6 +33,7 @@ def get_tile_types(minimal_mode=False):
             "entry_side": "S",
             "exit_side": "W",
             "unlock_level": 1,
+            "traits": ["path_turn"],
         },
         {
             "name": "Loop",
@@ -40,10 +43,10 @@ def get_tile_types(minimal_mode=False):
             "entry_side": "S",
             "exit_side": "N",
             "unlock_level": 1,
+            "traits": ["path_loop", "risk_medium"],
         },
     ]
 
-    # Add new tile variants in full mode
     if not minimal_mode:
         base_tiles.extend([
             {
@@ -54,6 +57,7 @@ def get_tile_types(minimal_mode=False):
                 "entry_side": "N",
                 "exit_side": "S",
                 "unlock_level": 2,
+                "traits": ["path_long", "risk_low"],
             },
             {
                 "name": "S-Curve",
@@ -63,6 +67,7 @@ def get_tile_types(minimal_mode=False):
                 "entry_side": "S",
                 "exit_side": "E",
                 "unlock_level": 2,
+                "traits": ["path_complex", "risk_high"],
             },
         ])
 

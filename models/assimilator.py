@@ -168,9 +168,9 @@ class Assimilator(Enemy):
         # Normal movement when not latched
         super().move()
 
-    def take_damage(self, dmg):
+    def take_damage(self, dmg, attacker_tags=None):
         """Override take_damage to handle unlatching on damage."""
-        killed = super().take_damage(dmg)
+        killed = super().take_damage(dmg, attacker_tags)
         if killed and self.is_latched:
             # If killed while latched, need to notify wall manager
             # This would be handled by the game loop calling unlatch()
