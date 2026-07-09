@@ -5,6 +5,7 @@ from datetime import datetime
 from models.tower import Tower
 from data.upgrades import UPGRADE_DEFS
 from ui.swarm_fx import SwarmFXManager
+from ui.layout import UILayout
 from config import log_debug
 
 
@@ -12,15 +13,19 @@ class Renderer:
     def __init__(self, game):
         log_debug("Renderer.__init__ start", location="renderer.py")
         self.game = game
+        self.layout = UILayout(game)
 
-        # Layout constants
-        self.TILE = 40
-        self.SHOP_H = 140
-        self.BENCH_H = 130
-        self.GRID_W = game.width * self.TILE
-        self.PANEL_RIGHT_W = 180
-        self.WIDTH = self.GRID_W + self.PANEL_RIGHT_W
-        self.HEIGHT = self.SHOP_H + self.BENCH_H + game.height * self.TILE
+        # Layout constants (mirrored from UILayout for existing call sites)
+        self.TILE = self.layout.TILE
+        self.SHOP_H = self.layout.SHOP_H
+        self.BENCH_H = self.layout.BENCH_H
+        self.GRID_W = self.layout.GRID_W
+        self.PANEL_RIGHT_W = self.layout.PANEL_RIGHT_W
+        self.WIDTH = self.layout.WIDTH
+        self.HEIGHT = self.layout.HEIGHT
+        self.grid_y = self.layout.grid_y
+        self.map_bench_x = self.layout.map_bench_x
+        self.map_bench_y = self.layout.map_bench_y
 
         # Camera system
         self.camera_x = 0
@@ -111,10 +116,10 @@ class Renderer:
             "Neural Field Generator": (100, 180, 200),
         }
 
-        # Layout positions
-        self.grid_y = self.SHOP_H + self.BENCH_H
-        self.map_bench_x = 15
-        self.map_bench_y = self.HEIGHT - 100
+        # Layout positions (owned by UILayout)
+        self.grid_y = self.layout.grid_y
+        self.map_bench_x = self.layout.map_bench_x
+        self.map_bench_y = self.layout.map_bench_y
 
         log_debug("Initializing pygame display", {"width": self.WIDTH, "height": self.HEIGHT}, location="renderer.py")
 
@@ -236,11 +241,14 @@ class Renderer:
 
     def update_dimensions(self):
         """Update dimensions when grid expands."""
-        self.GRID_W = self.game.width * self.TILE
-        self.WIDTH = self.GRID_W + self.PANEL_RIGHT_W
-        self.HEIGHT = self.SHOP_H + self.BENCH_H + self.game.height * self.TILE
+        self.layout.refresh(self.game)
+        self.GRID_W = self.layout.GRID_W
+        self.WIDTH = self.layout.WIDTH
+        self.HEIGHT = self.layout.HEIGHT
+        self.grid_y = self.layout.grid_y
+        self.map_bench_x = self.layout.map_bench_x
+        self.map_bench_y = self.layout.map_bench_y
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
-        self.map_bench_y = self.HEIGHT - 100
 
     def draw(self, frame):
         """Main drawing function."""
@@ -255,14 +263,11 @@ class Renderer:
 
         self._draw_shop()
         self._draw_bench(frame)
-        self._draw_map_tile_bench()
-        self._draw_upgrade_bench()
+        self._draw_loot_bag()
         self._draw_rotate_button()
         self._draw_merge_preview(frame)
         self._draw_right_panel()
-        self._draw_upgrade_dialog()
-        self._draw_tower_stats_panel()
-        self._draw_enemy_stats()
+        self._draw_inspector()
         self._draw_grid()
         self._draw_range_preview()
         self._draw_tile_preview()
@@ -329,38 +334,39 @@ class Renderer:
         self.swarm_fx.draw(self.screen)
 
     def _draw_shop(self):
-        """Draw the towers-only shop section."""
-        pygame.draw.rect(self.screen, self.SHOP_BG, (0, 0, self.GRID_W, self.SHOP_H))
+        """Draw the towers-only shop section (left 5/8 of top HUD)."""
+        L = self.layout
+        shop = L.shop_region()
+        pygame.draw.rect(self.screen, self.SHOP_BG, shop)
+        pygame.draw.line(self.screen, self.GRID, (shop.right, 0), (shop.right, self.SHOP_H), 2)
         pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H), (self.GRID_W, self.SHOP_H), 2)
-        self.screen.blit(self.font_s.render("SHOP", True, self.TEXT), (15, 2))
+        self.screen.blit(self.font_s.render("SHOP", True, self.TEXT), (shop.x + 12, 2))
 
         for i in range(5):
-            x = 15 + i * 80
-            y = 15
+            r = L.shop_card_rect(i)
             card = self.game.shop[i]
             col = self.CARD_EMP if card is None else self.CARD_BG
-            pygame.draw.rect(self.screen, col, (x, y, 70, 100))
-            pygame.draw.rect(self.screen, self.TEXT, (x, y, 70, 100), 1 if card else 2)
+            pygame.draw.rect(self.screen, col, r)
+            pygame.draw.rect(self.screen, self.TEXT, r, 1 if card else 2)
             if card:
-                self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (x + 5, y + 10))
-                self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (x + 5, y + 75))
+                self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (r.x + 5, r.y + 10))
+                self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (r.x + 5, r.y + 75))
 
-        # Reroll refreshes all 5 tower offers
-        rx = 15 + 400
-        ry = 40
-        pygame.draw.rect(self.screen, self.CARD_BG, (rx, ry, 35, 35))
-        pygame.draw.rect(self.screen, self.TEXT, (rx, ry, 35, 35), 1)
-        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rx + 10, ry + 10))
+        rr = L.reroll_rect()
+        pygame.draw.rect(self.screen, self.CARD_BG, rr)
+        pygame.draw.rect(self.screen, self.TEXT, rr, 1)
+        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rr.x + 10, rr.y + 10))
 
     def _draw_bench(self, frame):
-        """Draw the bench section."""
+        """Draw the tower bench (full width under shop + map tiles)."""
+        L = self.layout
         pygame.draw.rect(self.screen, self.BENCH_BG, (0, self.SHOP_H, self.GRID_W, self.BENCH_H))
         pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H + self.BENCH_H), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
         self.screen.blit(self.font_s.render("BENCH", True, self.TEXT), (15, self.SHOP_H + 5))
 
-        for i in range(10):
-            x = 15 + i * 68
-            y = self.SHOP_H + 15
+        for i in range(len(self.game.bench)):
+            r = L.bench_card_rect(i)
+            x, y = r.x, r.y
             col = self.CARD_EMP if self.game.bench[i] is None else self.CARD_BG
             if self.game.bench[i]:
                 merge_type = self.game.bench[i].get_merge_type()
@@ -371,20 +377,19 @@ class Renderer:
                 # egrem and base keep CARD_BG
             if i in (self.game.merge_tower_1, self.game.merge_tower_2) and self.game.bench[i] is not None:
                 col = self.CARD_SEL
-            pygame.draw.rect(self.screen, col, (x, y, 60, 90))
-            pygame.draw.rect(self.screen, self.TEXT, (x, y, 60, 90), 2)
+            pygame.draw.rect(self.screen, col, r)
+            pygame.draw.rect(self.screen, self.TEXT, r, 2)
             if self.game.bench[i]:
                 t = self.game.bench[i]
                 # Apply tier visual effects (full mode only)
                 if not getattr(self.game, 'minimal_mode', True):
-                    card_rect = pygame.Rect(x, y, 60, 90)
-                    self._draw_tier_effects(card_rect, t.get_merge_tier())
+                    self._draw_tier_effects(r, t.get_merge_tier())
 
                 if t.base_type == "Nanite Swarm":
-                    pygame.draw.rect(self.screen, (28, 28, 35), (x, y, 60, 90))
-                    pygame.draw.rect(self.screen, (80, 255, 80), (x, y, 60, 90), 2)
+                    pygame.draw.rect(self.screen, (28, 28, 35), r)
+                    pygame.draw.rect(self.screen, (80, 255, 80), r, 2)
                     # Add chaotic swirl effects
-                    self._draw_egrem_swirls(x, y, 60, 90)
+                    self._draw_egrem_swirls(x, y, r.w, r.h)
                     self.screen.blit(self.font_s.render("Egrem", True, (80, 255, 100)), (x+5, y+5))
                     self.screen.blit(self.font_s.render("spawn", True, (255, 80, 80)), (x+5, y+28))
                     self.screen.blit(self.font_s.render(f"T{t.get_merge_tier()}", True, self.TEXT), (x+5, y+50))
@@ -408,91 +413,78 @@ class Renderer:
         if self.game.egrem_flash_bench_idx is not None and frame < self.game.egrem_flash_until:
             flash_alpha = 80 + 60 * (1 - (self.game.egrem_flash_until - frame) / 120)
             i = self.game.egrem_flash_bench_idx
-            x = 15 + i * 68
-            y = self.SHOP_H + 15
-            s = pygame.Surface((60, 90))
+            r = L.bench_card_rect(i)
+            s = pygame.Surface((r.w, r.h))
             s.set_alpha(min(140, int(flash_alpha)))
             s.fill((255, 80, 80))
-            self.screen.blit(s, (x, y))
+            self.screen.blit(s, (r.x, r.y))
+
+    def _draw_loot_bag(self):
+        """Draw shared loot bag (path tiles + upgrades) in the top-right HUD column."""
+        L = self.layout
+        col = L.map_column_region()
+        pygame.draw.rect(self.screen, self.SHOP_BG, col)
+        bag = getattr(self.game, "loot_bag", self.game.map_tile_bench)
+        filled = sum(1 for s in bag if s is not None)
+        self.screen.blit(
+            self.font_s.render(f"LOOT {filled}/{len(bag)}", True, self.TEXT),
+            (col.x + 8, 2),
+        )
+
+        selected = getattr(self.game, "selected_loot", None)
+        if selected is None:
+            selected = self.game.selected_map_tile if self.game.selected_map_tile is not None else self.game.selected_upgrade
+
+        for i, item in enumerate(bag):
+            r = L.loot_card_rect(i)
+            card_col = self.CARD_EMP if item is None else self.CARD_BG
+            if i == selected:
+                card_col = self.CARD_SEL
+            pygame.draw.rect(self.screen, card_col, r)
+            pygame.draw.rect(self.screen, self.TEXT, r, 2)
+            if item is None:
+                continue
+            if isinstance(item, dict) and "name" in item:
+                pygame.draw.rect(self.screen, (40, 70, 90), (r.x + 2, r.y + 2, r.w - 4, 14))
+                self.screen.blit(self.font_s.render("TILE", True, (180, 220, 255)), (r.x + 4, r.y + 2))
+                self.screen.blit(self.font_s.render(item["name"][:6], True, self.TEXT), (r.x + 4, r.y + 20))
+                self.screen.blit(self.font_s.render(f"{item['width']}x{item['height']}", True, self.TEXT), (r.x + 4, r.y + 48))
+            else:
+                u = UPGRADE_DEFS.get(item, {})
+                name = u.get("name", str(item))
+                if len(name) > 6:
+                    name = name[:5] + "."
+                pygame.draw.rect(self.screen, (70, 50, 90), (r.x + 2, r.y + 2, r.w - 4, 14))
+                self.screen.blit(self.font_s.render("UPG", True, (220, 180, 255)), (r.x + 4, r.y + 2))
+                self.screen.blit(self.font_s.render(name, True, self.TEXT), (r.x + 4, r.y + 20))
+                self.screen.blit(self.font_s.render(f"${u.get('cost', 0)}", True, self.TEXT), (r.x + 4, r.y + 48))
 
     def _draw_map_tile_bench(self):
-        """Draw the map tile bench."""
-        pygame.draw.rect(self.screen, self.SHOP_BG, (0, self.map_bench_y - 10, 280, 100))
-        pygame.draw.line(self.screen, self.GRID, (0, self.map_bench_y - 10), (280, self.map_bench_y - 10), 2)
-        self.screen.blit(self.font_s.render("MAP TILES (egrem drops)", True, self.TEXT), (15, self.map_bench_y - 5))
-
-        for i in range(3):
-            x = self.map_bench_x + i * 80
-            y = self.map_bench_y
-            col = self.CARD_EMP if self.game.map_tile_bench[i] is None else self.CARD_BG
-            if i == self.game.selected_map_tile:
-                col = self.CARD_SEL
-            pygame.draw.rect(self.screen, col, (x, y, 70, 80))
-            pygame.draw.rect(self.screen, self.TEXT, (x, y, 70, 80), 2)
-            if self.game.map_tile_bench[i]:
-                tile = self.game.map_tile_bench[i]
-                self.screen.blit(self.font_s.render(tile["name"][:8], True, self.TEXT), (x+5, y+10))
-                self.screen.blit(self.font_s.render(f"{tile['width']}x{tile['height']}", True, self.TEXT), (x+5, y+50))
+        self._draw_loot_bag()
 
     def _draw_upgrade_bench(self):
-        """Draw the upgrade bench."""
-        upgrade_bench_x = self.GRID_W + 10
-        upgrade_bench_y = self.HEIGHT - 100
-        log_debug("Drawing upgrade bench", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y}, location="renderer.py:_draw_upgrade_bench")
-
-        pygame.draw.rect(self.screen, self.SHOP_BG, (self.GRID_W, upgrade_bench_y - 10, self.PANEL_RIGHT_W, 100))
-        pygame.draw.line(self.screen, self.GRID, (self.GRID_W, upgrade_bench_y - 10), (self.WIDTH, upgrade_bench_y - 10), 2)
-        self.screen.blit(self.font_s.render("UPGRADES (boss loot)", True, self.TEXT), (self.GRID_W + 15, upgrade_bench_y - 5))
-
-        for i in range(3):
-            x = upgrade_bench_x + i * 55
-            y = upgrade_bench_y
-            log_debug(f"Drawing upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80}, location="renderer.py:_draw_upgrade_bench")
-            col = self.CARD_EMP if self.game.upgrade_bench[i] is None else self.CARD_BG
-            if i == self.game.selected_upgrade:
-                col = self.CARD_SEL
-            pygame.draw.rect(self.screen, col, (x, y, 50, 80))
-            pygame.draw.rect(self.screen, self.TEXT, (x, y, 50, 80), 2)
-            if self.game.upgrade_bench[i]:
-                upgrade_id = self.game.upgrade_bench[i]
-                from data.upgrades import UPGRADE_DEFS
-                u = UPGRADE_DEFS.get(upgrade_id, {})
-                name = u.get("name", upgrade_id)
-                if len(name) > 8:
-                    name = name[:6] + ".."
-                self.screen.blit(self.font_s.render(name, True, self.TEXT), (x+3, y+5))
-                self.screen.blit(self.font_s.render(f"${u.get('cost', 0)}", True, self.TEXT), (x+3, y+60))
-
-        hint_text = "Boss loot · click or 1-3"
-        self.screen.blit(self.font_s.render(hint_text, True, (160, 160, 180)), (self.GRID_W + 15, upgrade_bench_y + 85))
+        return
 
     def _draw_rotate_button(self):
         """Draw the rotate button for selected map tiles."""
-        if self.game.selected_map_tile is not None:
-            rot_x = self.map_bench_x + 2*80 + 10
-            rot_y = self.map_bench_y + 5
+        if self.game.selected_map_tile is None:
+            return
+        left, right = self.layout.rotate_button_rects()
+        rot_x, rot_y = left.x, left.y
 
-            # Left rotate button
-            pygame.draw.rect(self.screen, self.PANEL_BTN, (rot_x, rot_y, 26, 26))
-            pygame.draw.rect(self.screen, self.TEXT, (rot_x, rot_y, 26, 26), 1)
-            self.screen.blit(self.font_s.render("<", True, self.TEXT), (rot_x + 8, rot_y + 6))
+        pygame.draw.rect(self.screen, self.PANEL_BTN, left)
+        pygame.draw.rect(self.screen, self.TEXT, left, 1)
+        self.screen.blit(self.font_s.render("<", True, self.TEXT), (rot_x + 8, rot_y + 4))
 
-            # Right rotate button
-            pygame.draw.rect(self.screen, self.PANEL_BTN, (rot_x + 34, rot_y, 26, 26))
-            pygame.draw.rect(self.screen, self.TEXT, (rot_x + 34, rot_y, 26, 26), 1)
-            self.screen.blit(self.font_s.render(">", True, self.TEXT), (rot_x + 42, rot_y + 6))
+        pygame.draw.rect(self.screen, self.PANEL_BTN, right)
+        pygame.draw.rect(self.screen, self.TEXT, right, 1)
+        self.screen.blit(self.font_s.render(">", True, self.TEXT), (right.x + 8, rot_y + 4))
 
-            # Degree label
-            deg_lbl = self.font_s.render(f"{self.game.selected_tile_rotation * 90}\u00b0", True, self.TEXT)
-            self.screen.blit(deg_lbl, (rot_x + 27 - deg_lbl.get_width() // 2, rot_y + 7))
+        deg_lbl = self.font_s.render(f"{self.game.selected_tile_rotation * 90}\u00b0", True, self.TEXT)
+        self.screen.blit(deg_lbl, (right.right + 8, rot_y + 4))
 
-            # Step indicator
-            step_lbl = self.font_s.render(f"{self.game.selected_tile_rotation + 1}/4", True, (160, 160, 180))
-            self.screen.blit(step_lbl, (rot_x + 30 - step_lbl.get_width() // 2, rot_y + 30))
-
-            # Hint text
-            hint_lbl = self.font_s.render("A/D or </> rotate", True, (120, 120, 140))
-            self.screen.blit(hint_lbl, (rot_x - 10, rot_y + 46))
+        hint_lbl = self.font_s.render("A/D", True, (120, 120, 140))
+        self.screen.blit(hint_lbl, (rot_x, rot_y + 24))
 
     def _draw_merge_preview(self, frame=0):
         """Draw merge/egrem/incompatible preview lines and labels."""
@@ -506,9 +498,9 @@ class Renderer:
                 continue
 
             idx1, idx2 = preview_info["idx1"], preview_info["idx2"]
-            cx1 = int(15 + idx1 * 68 + 30)
-            cx2 = int(15 + idx2 * 68 + 30)
-            cy = int(self.SHOP_H + 15 + 45)
+            cx1, cy = self.layout.bench_card_center(min(idx1, idx2))
+            cx2, _ = self.layout.bench_card_center(max(idx1, idx2))
+            cx1, cy, cx2 = int(cx1), int(cy), int(cx2)
 
             # Zig-zag points
             amp = 20
@@ -550,26 +542,10 @@ class Renderer:
                 self.screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
 
     def stats_toggle_rect(self):
-        """Placed-tower stats screen toggle (must match _draw_right_panel)."""
-        return pygame.Rect(self.GRID_W + 116, 16, 58, 20)
-
-    def _tower_stats_layout(self):
-        bottom_margin = 8
-        outer = pygame.Rect(self.GRID_W + 8, 162, 164, self.HEIGHT - 162 - bottom_margin)
-        head = 22
-        close_h = 24
-        pad = 4
-        inner = pygame.Rect(
-            outer.x + pad,
-            outer.y + head,
-            outer.w - 2 * pad,
-            outer.h - head - close_h - pad - 4,
-        )
-        close_r = pygame.Rect(outer.x + 24, outer.bottom - close_h - 6, outer.w - 48, close_h)
-        return outer, inner, close_r
+        return self.layout.stats_toggle_rect()
 
     def tower_stats_close_rect(self):
-        return self._tower_stats_layout()[2]
+        return self.layout.inspector_close_rect()
 
     def _tower_stats_lines_for_tower(self, t, total_last_damage, dur_frames):
         lines = []
@@ -590,7 +566,7 @@ class Renderer:
         if total_last_damage > 0:
             pct = 100.0 * t.damage_dealt_last_wave / total_last_damage
             lines.append(f"Share last W: {pct:.0f}%")
-        if t.fire_rate > 0 and t.fire_type not in ("Radius", "Spawner", "Beam"):
+        if t.fire_rate > 0 and t.fire_type not in ("Radius", "Spawner", "Beam", "TargetBeam"):
             paper = t.dmg * 60.0 / t.fire_rate
             lines.append(f"Paper DPS~{paper:.1f} (60fps)")
         for uid in t.upgrades[:4]:
@@ -610,69 +586,26 @@ class Renderer:
         return h
 
     def tower_stats_max_scroll(self):
-        if not getattr(self.game, "tower_stats_open", False):
+        if self.game.inspector_mode != "stats":
             return 0
-        _, inner, _ = self._tower_stats_layout()
+        inner = self.layout.inspector_content_rect()
         return max(0, self._tower_stats_content_height() - inner.height)
-
-    def _draw_tower_stats_panel(self):
-        if not getattr(self.game, "tower_stats_open", False):
-            return
-        outer, inner, close_r = self._tower_stats_layout()
-        max_s = self.tower_stats_max_scroll()
-        self.game.tower_stats_scroll = max(0, min(max_s, self.game.tower_stats_scroll))
-
-        pygame.draw.rect(self.screen, (35, 35, 50), outer)
-        pygame.draw.rect(self.screen, self.TEXT, outer, 2)
-        self.screen.blit(self.font.render("Placed towers", True, self.TEXT), (outer.x + 6, outer.y + 4))
-
-        towers = sorted(self.game.towers, key=lambda t: (t.y, t.x))
-        dur = self.game.last_wave_duration_frames
-        total_ld = sum(t.damage_dealt_last_wave for t in towers)
-
-        prev_clip = self.screen.get_clip()
-        self.screen.set_clip(inner)
-        y = inner.y - self.game.tower_stats_scroll
-        x = inner.x + 2
-
-        self.screen.blit(self.font_s.render(f"Count: {len(towers)}", True, self.TEXT), (x, y))
-        y += 14
-        self.screen.blit(self.font_s.render(f"Total last wave dmg: {total_ld}", True, self.TEXT), (x, y))
-        y += 14 + 4
-
-        if not towers:
-            self.screen.blit(self.font_s.render("No towers on map.", True, (160, 160, 180)), (x, y))
-
-        for t in towers:
-            for line in self._tower_stats_lines_for_tower(t, total_ld, dur):
-                if y + 14 > inner.y and y < inner.bottom:
-                    self.screen.blit(self.font_s.render(line, True, self.TEXT), (x, y))
-                y += 14
-            y += 6
-
-        self.screen.set_clip(prev_clip)
-
-        pygame.draw.rect(self.screen, self.PANEL_BTN, close_r)
-        pygame.draw.rect(self.screen, self.TEXT, close_r, 1)
-        cl = self.font_s.render("Close", True, self.TEXT)
-        self.screen.blit(cl, (close_r.centerx - cl.get_width() // 2, close_r.centery - 6))
 
     def _draw_right_panel(self):
         """Draw the right panel with game stats and controls."""
+        L = self.layout
         pygame.draw.rect(self.screen, self.PANEL_BG, (self.GRID_W, 0, self.PANEL_RIGHT_W, self.SHOP_H + self.BENCH_H))
         pygame.draw.line(self.screen, self.GRID, (self.GRID_W, 0), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
 
-        st = self.stats_toggle_rect()
-        col_st = self.PANEL_BTN_SEL if self.game.tower_stats_open else self.PANEL_BTN
+        st = L.stats_toggle_rect()
+        col_st = self.PANEL_BTN_SEL if self.game.inspector_mode == "stats" else self.PANEL_BTN
         pygame.draw.rect(self.screen, col_st, st)
         pygame.draw.rect(self.screen, self.TEXT, st, 1)
         st_lbl = self.font_s.render("Stats", True, self.TEXT)
         self.screen.blit(st_lbl, (st.centerx - st_lbl.get_width() // 2, st.centery - 6))
 
         px = self.GRID_W + 14
-        py = 18  # Starting Y position
-
-        # Basic stats
+        py = 18
         self.screen.blit(self.font.render(f"Gold:  {self.game.gold}", True, self.TEXT), (px, py))
         py += 24
         self.screen.blit(self.font.render(f"Lives: {self.game.lives}", True, self.TEXT), (px, py))
@@ -680,136 +613,248 @@ class Renderer:
         self.screen.blit(self.font.render(f"Wave:  {self.game.round_num}", True, self.TEXT), (px, py))
         py += 24
 
-        # SPL/XP UI (full mode only)
-        if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'shop_power_level'):
+        if L.show_spl(self.game):
             self.screen.blit(self.font.render(f"SPL:   {self.game.shop_power_level}", True, self.TEXT), (px, py))
             py += 24
-
-            # XP Progress bar
             xp_ratio = self.game.xp / self.game.xp_to_next if self.game.xp_to_next > 0 else 0
-            bar_width = 120
-            bar_height = 12
-            bar_x = px
-            bar_y = py
-            pygame.draw.rect(self.screen, self.HP_BG, (bar_x, bar_y, bar_width, bar_height))
-            pygame.draw.rect(self.screen, (100, 255, 100), (bar_x, bar_y, int(bar_width * xp_ratio), bar_height))
-            pygame.draw.rect(self.screen, self.TEXT, (bar_x, bar_y, bar_width, bar_height), 1)
+            bar_width, bar_height = 120, 12
+            pygame.draw.rect(self.screen, self.HP_BG, (px, py, bar_width, bar_height))
+            pygame.draw.rect(self.screen, (100, 255, 100), (px, py, int(bar_width * xp_ratio), bar_height))
+            pygame.draw.rect(self.screen, self.TEXT, (px, py, bar_width, bar_height), 1)
             py += bar_height + 4
-
-            xp_text = f"XP: {self.game.xp}/{self.game.xp_to_next}"
-            self.screen.blit(self.font_s.render(xp_text, True, self.TEXT), (px, py))
+            self.screen.blit(self.font_s.render(f"XP: {self.game.xp}/{self.game.xp_to_next}", True, self.TEXT), (px, py))
             py += 20
 
-        # Add some spacing before buttons
-        py += 8
-
-        # Play/Pause button
-        play_rect = pygame.Rect(px, py, 100, 26)
+        play_rect, next_rect, auto_rect = L.panel_control_rects(show_spl=L.show_spl(self.game))
         col_play = self.PANEL_BTN_SEL if self.game.paused else self.PANEL_BTN
         pygame.draw.rect(self.screen, col_play, play_rect)
         pygame.draw.rect(self.screen, self.TEXT, play_rect, 1)
-        self.screen.blit(self.font_s.render("Play" if self.game.paused else "Pause", True, self.TEXT), (px + 28, py + 4))
-        py += 32
+        self.screen.blit(self.font_s.render("Play" if self.game.paused else "Pause", True, self.TEXT), (play_rect.x + 28, play_rect.y + 4))
 
-        # Next Wave button
-        next_rect = pygame.Rect(px, py, 100, 26)
         pygame.draw.rect(self.screen, self.PANEL_BTN, next_rect)
         pygame.draw.rect(self.screen, self.TEXT, next_rect, 1)
-        self.screen.blit(self.font_s.render("Next Wave", True, self.TEXT), (px + 14, py + 4))
-        py += 32
+        self.screen.blit(self.font_s.render("Next Wave", True, self.TEXT), (next_rect.x + 14, next_rect.y + 4))
 
-        # Auto toggle button
-        auto_rect = pygame.Rect(px, py, 100, 26)
         col_auto = self.PANEL_BTN_SEL if self.game.auto_mode else self.PANEL_BTN
         pygame.draw.rect(self.screen, col_auto, auto_rect)
         pygame.draw.rect(self.screen, self.TEXT, auto_rect, 1)
-        self.screen.blit(self.font_s.render("Auto " + ("ON" if self.game.auto_mode else "OFF"), True, self.TEXT), (px + 18, py + 4))
+        self.screen.blit(self.font_s.render("Auto " + ("ON" if self.game.auto_mode else "OFF"), True, self.TEXT), (auto_rect.x + 18, auto_rect.y + 4))
 
-    def _draw_upgrade_dialog(self):
-        """Draw the upgrade dialog when a tower is selected."""
-        if getattr(self.game, "tower_stats_open", False):
+        self._draw_round_guide()
+
+    def _draw_round_guide(self):
+        """Tetris-like upcoming-wave scout strip (intel-gated)."""
+        L = self.layout
+        rect = L.round_guide_rect(show_spl=L.show_spl(self.game))
+        pygame.draw.rect(self.screen, (22, 24, 32), rect)
+        pygame.draw.rect(self.screen, self.GRID, rect, 1)
+
+        preview = None
+        if hasattr(self.game, "wave_manager") and self.game.wave_manager:
+            preview = self.game.wave_manager.preview_upcoming()
+        if not preview:
             return
-        if self.game.upgrade_dialog_tower is None:
+
+        x, y = rect.x + 6, rect.y + 4
+        tier_label = preview.get("tier_label", "Contact")
+        intel = preview.get("intel", 0)
+        intel_max = max(1, preview.get("intel_max", 100))
+        self.screen.blit(self.font_s.render(f"Scout [{tier_label}]", True, self.TEXT), (x, y))
+        y += 14
+
+        bar_w, bar_h = rect.w - 12, 6
+        pygame.draw.rect(self.screen, self.HP_BG, (x, y, bar_w, bar_h))
+        fill = int(bar_w * min(1.0, intel / intel_max))
+        pygame.draw.rect(self.screen, (80, 180, 220), (x, y, fill, bar_h))
+        pygame.draw.rect(self.screen, self.TEXT, (x, y, bar_w, bar_h), 1)
+        y += bar_h + 4
+        self.screen.blit(self.font_s.render(f"Intel {intel}/{intel_max}", True, (160, 170, 190)), (x, y))
+        y += 14
+
+        conf = preview.get("confidence", 0)
+        conf_pct = int(round(100 * conf))
+        noise = preview.get("noise_injections", 0)
+        conf_col = (100, 220, 140) if conf_pct >= 60 else (220, 190, 100) if conf_pct >= 35 else (200, 120, 100)
+        noise_bit = f"  n{noise}" if noise else ""
+        self.screen.blit(self.font_s.render(f"Conf {conf_pct}%{noise_bit}"[:26], True, conf_col), (x, y))
+        y += 14
+
+        loot = preview.get("loot") or {}
+        loot_waves = loot.get("waves", 0)
+        loot_kind = loot.get("kind", "mini_boss")
+        loot_name = "Boss" if loot_kind == "boss" else "Mini"
+        if loot_waves == 0:
+            loot_txt = f"Loot: {loot_name} this wave"
+        else:
+            loot_txt = f"Loot: {loot_name} in {loot_waves}"
+        self.screen.blit(self.font_s.render(loot_txt[:26], True, (220, 190, 100)), (x, y))
+        y += 14
+
+        hint = preview.get("directive_hint")
+        if hint and y <= rect.bottom - 12:
+            self.screen.blit(self.font_s.render(f"Dir: {hint}"[:26], True, (140, 200, 160)), (x, y))
+            y += 12
+
+        mods = preview.get("modifier_labels") or []
+        if mods and y <= rect.bottom - 12:
+            mod_txt = "+" + ",".join(m.split()[0] for m in mods)[:20]
+            self.screen.blit(self.font_s.render(mod_txt, True, (180, 160, 220)), (x, y))
+            y += 12
+
+        for entry in preview.get("waves", [])[:3]:
+            if y > rect.bottom - 12:
+                break
+            wnum = entry.get("wave", "?")
+            count = entry.get("count", 0)
+            kind = entry.get("kind", "normal")
+            prefix = "E" if kind == "event" else "W"
+            line = f"{prefix}{wnum}: {count}"
+            if entry.get("show_types") and entry.get("composition"):
+                comps = entry["composition"]
+                if entry.get("is_exact") and entry.get("show_percents"):
+                    bits = [f"{int(p)}%{t[:3]}" for t, p in list(comps.items())[:2]]
+                elif entry.get("is_exact"):
+                    bits = [f"{int(n)}×{t[:3]}" for t, n in list(comps.items())[:2]]
+                elif entry.get("show_percents"):
+                    bits = [f"{int(p)}%{t[:3]}" for t, p in list(comps.items())[:2]]
+                else:
+                    bits = [t[:4] for t in list(comps.keys())[:2]]
+                if bits:
+                    line = f"{line} {' '.join(bits)}"
+            else:
+                line = f"{line} ???"
+            if entry.get("loot"):
+                line += " *"
+            conf = entry.get("confidence")
+            if conf is not None and entry.get("show_types"):
+                line += f" ~{int(100 * conf)}%"
+            self.screen.blit(self.font_s.render(line[:28], True, self.TEXT), (x, y))
+            y += 12
+
+    def _draw_inspector(self):
+        """Single inspector panel: tower | enemy | stats tabs."""
+        mode = self.game.inspector_mode
+        if mode is None:
             return
 
-        t = self.game.upgrade_dialog_tower
-        base_height = 280
-        upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
-        dialog_height = base_height + upgrade_height
+        L = self.layout
+        outer = L.inspector_rect()
+        tabs = L.inspector_tab_rects()
+        content = L.inspector_content_rect()
+        close_r = L.inspector_close_rect()
 
-        dialog_rect = pygame.Rect(self.GRID_W + 8, 162, 164, dialog_height)
-        pygame.draw.rect(self.screen, (35, 35, 50), dialog_rect)
-        pygame.draw.rect(self.screen, self.TEXT, dialog_rect, 2)
-        self.screen.blit(self.font.render("Upgrade", True, self.TEXT), (self.GRID_W + 14, 168))
-        dname = t.get_display_name() if hasattr(t, 'get_display_name') else t.base_type
-        self.screen.blit(self.font_s.render(f"{dname}  D:{t.dmg} R:{t.range}", True, self.TEXT), (self.GRID_W + 14, 184))
+        pygame.draw.rect(self.screen, (35, 35, 50), outer)
+        pygame.draw.rect(self.screen, self.TEXT, outer, 2)
 
-        capacity_text = f"Upgrades: {len(t.upgrades)}/{t.UPGRADE_CAPACITY}"
-        capacity_color = (180, 180, 200) if len(t.upgrades) < t.UPGRADE_CAPACITY else (255, 150, 150)
-        self.screen.blit(self.font_s.render(capacity_text, True, capacity_color), (self.GRID_W + 14, 200))
+        for name, tab in tabs.items():
+            active = mode == name
+            pygame.draw.rect(self.screen, self.PANEL_BTN_SEL if active else self.PANEL_BTN, tab)
+            pygame.draw.rect(self.screen, self.TEXT, tab, 1)
+            label = {"tower": "Tower", "enemy": "Enemy", "stats": "Stats"}[name]
+            lbl = self.font_s.render(label, True, self.TEXT)
+            self.screen.blit(lbl, (tab.centerx - lbl.get_width() // 2, tab.centery - 6))
 
-        self.screen.blit(self.font_s.render("Select upgrade from bench,", True, (160, 160, 180)), (self.GRID_W + 14, 220))
-        self.screen.blit(self.font_s.render("then click tower to apply", True, (160, 160, 180)), (self.GRID_W + 14, 235))
+        if mode == "tower":
+            self._draw_inspector_tower(content)
+        elif mode == "enemy":
+            self._draw_inspector_enemy(content)
+        else:
+            self._draw_inspector_stats(content)
 
-        button_y = 266 + upgrade_height
-        pygame.draw.rect(self.screen, (120, 80, 80), (self.GRID_W + 10, button_y, 75, 24))
-        pygame.draw.rect(self.screen, self.TEXT, (self.GRID_W + 10, button_y, 75, 24), 1)
-        self.screen.blit(self.font_s.render("Sell 60%", True, self.TEXT), (self.GRID_W + 18, button_y + 4))
-        pygame.draw.rect(self.screen, self.PANEL_BTN, (self.GRID_W + 95, button_y, 75, 24))
-        pygame.draw.rect(self.screen, self.TEXT, (self.GRID_W + 95, button_y, 75, 24), 1)
-        self.screen.blit(self.font_s.render("Close", True, self.TEXT), (self.GRID_W + 118, button_y + 4))
+        pygame.draw.rect(self.screen, self.PANEL_BTN, close_r)
+        pygame.draw.rect(self.screen, self.TEXT, close_r, 1)
+        cl = self.font_s.render("Close", True, self.TEXT)
+        self.screen.blit(cl, (close_r.centerx - cl.get_width() // 2, close_r.centery - 6))
 
-        tower_stats_y = button_y + 34
-        self.screen.blit(self.font_s.render("Stats:", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-        tower_stats_y += 16
-        self.screen.blit(self.font_s.render(f"Damage: {t.dmg}", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-        tower_stats_y += 16
-        self.screen.blit(self.font_s.render(f"Range: {t.range}", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-        tower_stats_y += 16
-        self.screen.blit(self.font_s.render(f"Fire Rate: {t.fire_rate}", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-        tower_stats_y += 16
-        self.screen.blit(self.font_s.render(f"Heat: {t.heat:.1f}/{t.max_heat}", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-        tower_stats_y += 20
-        if t.upgrades:
-            self.screen.blit(self.font_s.render("Upgrades:", True, self.TEXT), (self.GRID_W + 14, tower_stats_y))
-            for uid in t.upgrades:
-                tower_stats_y += 16
-                name = UPGRADE_DEFS.get(uid, {}).get("name", uid)
-                self.screen.blit(self.font_s.render(f"- {name}", True, (180, 180, 200)), (self.GRID_W + 14, tower_stats_y))
+    def _draw_inspector_tower(self, content):
+        t = self.game.inspector_tower
+        if t is None:
+            self.screen.blit(self.font_s.render("Select a tower", True, (160, 160, 180)), (content.x, content.y))
+            return
 
-        # Range visualization
+        dname = t.get_display_name() if hasattr(t, "get_display_name") else t.base_type
+        y = content.y
+        self.screen.blit(self.font_s.render(f"{dname}", True, self.TEXT), (content.x, y))
+        y += 16
+        self.screen.blit(self.font_s.render(f"D:{t.dmg} R:{t.range} FR:{t.fire_rate}", True, self.TEXT), (content.x, y))
+        y += 16
+        cap_col = (180, 180, 200) if len(t.upgrades) < t.UPGRADE_CAPACITY else (255, 150, 150)
+        self.screen.blit(self.font_s.render(f"Upgrades {len(t.upgrades)}/{t.UPGRADE_CAPACITY}", True, cap_col), (content.x, y))
+        y += 16
+        self.screen.blit(self.font_s.render(f"Heat {t.heat:.1f}/{t.max_heat}", True, self.TEXT), (content.x, y))
+        y += 16
+        self.screen.blit(self.font_s.render("Bench upgrade then click tower", True, (160, 160, 180)), (content.x, y))
+
+        if t.fire_type in ("Track", "DirectionalBeam"):
+            labels = ["W", "E", "N", "S"]
+            for d, r in enumerate(self.layout.inspector_direction_rects()):
+                col = self.PANEL_BTN_SEL if t.track_direction == d else self.PANEL_BTN
+                pygame.draw.rect(self.screen, col, r)
+                pygame.draw.rect(self.screen, self.TEXT, r, 1)
+                lbl = self.font_s.render(labels[d], True, self.TEXT)
+                self.screen.blit(lbl, (r.centerx - lbl.get_width() // 2, r.centery - 6))
+
+        sell_r, _ = self.layout.inspector_sell_close_rects()
+        pygame.draw.rect(self.screen, (120, 80, 80), sell_r)
+        pygame.draw.rect(self.screen, self.TEXT, sell_r, 1)
+        self.screen.blit(self.font_s.render("Sell", True, self.TEXT), (sell_r.x + 20, sell_r.y + 4))
+
         if t.fire_type != "Overwatch":
             cx = t.x * self.TILE + 20
             cy = self.grid_y + t.y * self.TILE + 20
             rad = t.range * self.TILE
-            s = pygame.Surface((rad*2+4, rad*2+4), pygame.SRCALPHA)
-            pygame.draw.circle(s, (100, 160, 255, 80), (rad+2, rad+2), rad)
-            pygame.draw.circle(s, (160, 220, 255, 150), (rad+2, rad+2), rad, 2)
-            self.screen.blit(s, (cx-rad-2, cy-rad-2))
+            s = pygame.Surface((rad * 2 + 4, rad * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(s, (100, 160, 255, 80), (rad + 2, rad + 2), rad)
+            pygame.draw.circle(s, (160, 220, 255, 150), (rad + 2, rad + 2), rad, 2)
+            self.screen.blit(s, (cx - rad - 2, cy - rad - 2))
 
-    def _draw_enemy_stats(self):
-        """Draw enemy stats when an enemy is selected."""
-        if getattr(self.game, "tower_stats_open", False):
+    def _draw_inspector_enemy(self, content):
+        e = self.game.inspector_enemy
+        if e is None or not getattr(e, "alive", False):
+            self.screen.blit(self.font_s.render("Select an enemy", True, (160, 160, 180)), (content.x, content.y))
             return
-        if self.game.selected_enemy is None:
-            return
+        y = content.y
+        self.screen.blit(self.font.render(f"{e.display_name}", True, self.TEXT), (content.x, y))
+        y += 22
+        for line in (
+            f"HP: {e.health}/{e.max_health}",
+            f"Speed: {e.move_speed}",
+            f"Difficulty: {e.difficulty}",
+            f"Wave: {e.wave_num}",
+            f"Pos idx: {e.position_index}",
+        ):
+            self.screen.blit(self.font_s.render(line, True, self.TEXT), (content.x, y))
+            y += 16
 
-        e = self.game.selected_enemy
-        enemy_stats_rect = pygame.Rect(self.GRID_W + 8, 162 + 320 + 10, 164, 120)
-        pygame.draw.rect(self.screen, (35, 35, 50), enemy_stats_rect)
-        pygame.draw.rect(self.screen, self.TEXT, enemy_stats_rect, 2)
-        y_offset = enemy_stats_rect.y + 6
-        self.screen.blit(self.font.render(f"{e.display_name}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
-        y_offset += 20
-        self.screen.blit(self.font_s.render(f"HP: {e.health}/{e.max_health}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
-        y_offset += 16
-        self.screen.blit(self.font_s.render(f"Speed: {e.move_speed}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
-        y_offset += 16
-        self.screen.blit(self.font_s.render(f"Difficulty: {e.difficulty}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
-        y_offset += 16
-        self.screen.blit(self.font_s.render(f"Wave: {e.wave_num}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
-        y_offset += 16
-        self.screen.blit(self.font_s.render(f"Position: {e.position_index}", True, self.TEXT), (enemy_stats_rect.x + 6, y_offset))
+    def _draw_inspector_stats(self, content):
+        max_s = self.tower_stats_max_scroll()
+        self.game.inspector_scroll = max(0, min(max_s, self.game.inspector_scroll))
+
+        towers = sorted(self.game.towers, key=lambda t: (t.y, t.x))
+        dur = self.game.last_wave_duration_frames
+        total_ld = sum(t.damage_dealt_last_wave for t in towers)
+
+        prev_clip = self.screen.get_clip()
+        self.screen.set_clip(content)
+        y = content.y - self.game.inspector_scroll
+        x = content.x + 2
+
+        self.screen.blit(self.font_s.render(f"Count: {len(towers)}", True, self.TEXT), (x, y))
+        y += 14
+        self.screen.blit(self.font_s.render(f"Total last wave dmg: {total_ld}", True, self.TEXT), (x, y))
+        y += 18
+
+        if not towers:
+            self.screen.blit(self.font_s.render("No towers on map.", True, (160, 160, 180)), (x, y))
+
+        for t in towers:
+            for line in self._tower_stats_lines_for_tower(t, total_ld, dur):
+                if y + 14 > content.y and y < content.bottom:
+                    self.screen.blit(self.font_s.render(line, True, self.TEXT), (x, y))
+                y += 14
+            y += 6
+
+        self.screen.set_clip(prev_clip)
 
     def _draw_grid(self):
         """Draw the game grid."""
@@ -949,20 +994,57 @@ class Renderer:
                 self.screen.blit(lbl, (mx + 14, my - 14))
 
     def _draw_attack_beams(self, frame):
-        """Draw attack beams."""
+        """Draw attack beams (TargetBeam/Ball lines + DirectionalBeam flame)."""
         for t in self.game.towers:
-            if t.last_shot_target and frame - t.last_shot_frame < 18:
-                tx, ty = self.world_to_screen(t.x, t.y)
-                tx += 20 * self.zoom_level
-                ty += 20 * self.zoom_level
-                ex, ey = t.last_shot_target
-                exx, eyy = self.world_to_screen(ex, ey)
-                exx += 20 * self.zoom_level
-                eyy += 20 * self.zoom_level
-                age = frame - t.last_shot_frame
-                w = max(2, int((6 - age//3) * self.zoom_level))
-                col = (*self.tower_colors.get(t.base_type, (180, 180, 255)), 255 - age*14)
+            if not t.last_shot_target or frame - t.last_shot_frame >= 18:
+                continue
+            tx, ty = self.world_to_screen(t.x, t.y)
+            tx += 20 * self.zoom_level
+            ty += 20 * self.zoom_level
+            ex, ey = t.last_shot_target
+            exx, eyy = self.world_to_screen(ex, ey)
+            exx += 20 * self.zoom_level
+            eyy += 20 * self.zoom_level
+            age = frame - t.last_shot_frame
+            style = getattr(t, "last_shot_style", None) or "beam"
+
+            if style == "flame_beam" or t.fire_type == "DirectionalBeam":
+                self._draw_flame_beam(tx, ty, exx, eyy, age, frame)
+            else:
+                w = max(2, int((6 - age // 3) * self.zoom_level))
+                col = (*self.tower_colors.get(t.base_type, (180, 180, 255)), 255 - age * 14)
                 pygame.draw.line(self.screen, col, (tx, ty), (exx, eyy), w)
+
+    def _draw_flame_beam(self, x0, y0, x1, y1, age, frame):
+        """Layered orange/yellow/red beam from tower to max-range tip."""
+        # Draw on a temp surface so we can fade the whole beam
+        min_x = int(min(x0, x1)) - 12
+        min_y = int(min(y0, y1)) - 12
+        max_x = int(max(x0, x1)) + 12
+        max_y = int(max(y0, y1)) + 12
+        w = max(1, max_x - min_x)
+        h = max(1, max_y - min_y)
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        lx0, ly0 = x0 - min_x, y0 - min_y
+        lx1, ly1 = x1 - min_x, y1 - min_y
+        alpha = max(0, 220 - age * 12)
+        pygame.draw.line(surf, (180, 40, 10, alpha), (lx0, ly0), (lx1, ly1), max(8, int(10 * self.zoom_level)))
+        pygame.draw.line(surf, (255, 120, 20, alpha), (lx0, ly0), (lx1, ly1), max(5, int(6 * self.zoom_level)))
+        pygame.draw.line(surf, (255, 230, 80, min(255, alpha + 20)), (lx0, ly0), (lx1, ly1), max(2, int(3 * self.zoom_level)))
+        steps = max(3, int(6 * self.zoom_level))
+        for i in range(1, steps):
+            t = i / steps
+            sx = lx0 + (lx1 - lx0) * t
+            sy = ly0 + (ly1 - ly0) * t
+            jitter = ((frame * 3 + i * 17) % 7) - 3
+            r = max(2, int(3 * self.zoom_level))
+            pygame.draw.circle(
+                surf,
+                (255, max(40, 200 - i * 10), 40, max(40, alpha - 40)),
+                (int(sx + jitter), int(sy - abs(jitter))),
+                r,
+            )
+        self.screen.blit(surf, (min_x, min_y))
 
     def _draw_towers(self):
         """Draw towers on the grid."""

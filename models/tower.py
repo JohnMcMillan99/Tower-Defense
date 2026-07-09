@@ -48,6 +48,7 @@ class Tower:
         self.cooldown = 0
         self.last_shot_target = None
         self.last_shot_frame = 0
+        self.last_shot_style = None  # None | "flame_beam" | "beam"
         self.gold_invested = 0
         self.upgrades = []          # list of upgrade ids
         self.heat = 0.0             # NEW: heat buildup mechanic
@@ -357,21 +358,33 @@ class Tower:
             return (None, killed_any) if killed_any else None
 
         elif self.fire_type == "DirectionalBeam":
-            # Shoot a beam in one direction, hitting all tiles in that line
+            # Pierce: damage EVERY living enemy on each tile along the aim line
+            # out to max range (no early exit after first contact).
             killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # W, E, N, S
-            dx, dy = directions[self.track_direction]
-            for dist in range(1, self.range + 1):
+            hit_any = False
+            # Indices match inspector labels: 0=W, 1=E, 2=N, 3=S
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            dx, dy = directions[self.track_direction % 4]
+            beam_range = max(1, int(self.range))
+            for dist in range(1, beam_range + 1):
                 nx = self.x + dx * dist
                 ny = self.y + dy * dist
-                if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                    for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
-                        if e.alive and not e.leaked:
-                            killed = self._damage_enemy(e, self.dmg, attacker_tags)
-                            if killed:
-                                killed_any = True
+                if not (0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid)):
+                    break
+                for e in game.enemy_grid[ny][nx][:]:
+                    if e.alive and not e.leaked:
+                        hit_any = True
+                        killed = self._damage_enemy(e, self.dmg, attacker_tags)
+                        if killed:
+                            killed_any = True
             self.cooldown = self.fire_rate
-            return (None, killed_any) if killed_any else None
+            # Visual: flame beam always reaches max range in aim direction
+            end_x = self.x + dx * beam_range
+            end_y = self.y + dy * beam_range
+            self.last_shot_target = (end_x, end_y)
+            self.last_shot_frame = current_frame
+            self.last_shot_style = "flame_beam"
+            return (None, killed_any) if (killed_any or hit_any) else None
 
         elif self.fire_type in ("Beam", "TargetBeam"):
             # Find target, damage increases over time on same target
@@ -412,6 +425,7 @@ class Tower:
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
                 self.last_shot_frame = current_frame
+                self.last_shot_style = "beam"
                 return (target, killed)
             else:
                 # Clear beam targets if no target
@@ -450,6 +464,7 @@ class Tower:
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
                 self.last_shot_frame = current_frame
+                self.last_shot_style = "beam"
                 return (target, killed)
             return None
 

@@ -62,10 +62,14 @@ frame = 0
 
 
 async def main():
-    global frame
+    global frame, game, renderer
     log_debug("Main game loop starting", location="main.py")
     try:
         while handler.running:
+            # Keep module refs in sync after game-over restart
+            game = handler.game
+            renderer = handler.renderer
+
             frame += 1
             game.current_frame = frame
             if frame <= 5:
@@ -80,7 +84,7 @@ async def main():
                 log_debug(f"Frame {frame}: Event handling failed", {"error": str(e)}, location="main.py")
                 raise
 
-            # Keep module refs in sync after game-over restart
+            # Re-sync in case restart happened during event handling
             game = handler.game
             renderer = handler.renderer
 

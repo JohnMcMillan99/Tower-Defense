@@ -3,12 +3,26 @@ from models.tower import Tower
 from data.units import UNIT_TYPES
 from data.tiles import get_tile_types
 from data.upgrades import UPGRADE_DEFS
-from config import REWARD_CONFIG
+from config import REWARD_CONFIG, ECONOMY_CONFIG, BENCH_CONFIG
+
+
+def _is_tile_slot(item):
+    return isinstance(item, dict) and "name" in item and "width" in item
+
+
+def _is_upgrade_slot(item):
+    return isinstance(item, str) and item in UPGRADE_DEFS
 
 
 class EconomyManager:
     def __init__(self, game):
         self.game = game
+
+    def _tower_bench_size(self):
+        return len(self.game.bench)
+
+    def _loot_bag(self):
+        return getattr(self.game, "loot_bag", None) or self.game.map_tile_bench
 
     def generate_shop(self, clear_existing=False):
         """Fill shop with tower offers. If clear_existing, replace all 5 slots."""
@@ -29,7 +43,7 @@ class EconomyManager:
 
         tower = Tower(0, 0, card["type"])
         tower.gold_invested = card["cost"]
-        for i in range(10):
+        for i in range(self._tower_bench_size()):
             if self.game.bench[i] is None:
                 self.game.bench[i] = tower
                 self.game.gold -= card["cost"]
@@ -64,26 +78,33 @@ class EconomyManager:
             return random.choices(pool, weights=weights, k=1)[0].copy()
         return random.choice(available).copy()
 
-    def try_add_tile_to_bench(self, tile_data=None):
-        """Add a path tile to the first empty map-tile bench slot. Returns True if placed."""
-        tile = tile_data if tile_data is not None else self._pick_random_tile()
-        if tile is None:
+    def try_add_loot(self, item):
+        """Add tile dict or upgrade id to first empty loot_bag slot."""
+        bag = self._loot_bag()
+        if item is None or bag is None:
             return False
-        for i in range(len(self.game.map_tile_bench)):
-            if self.game.map_tile_bench[i] is None:
-                self.game.map_tile_bench[i] = tile
+        for i in range(len(bag)):
+            if bag[i] is None:
+                bag[i] = item
                 return True
         return False
 
+    def try_add_tile_to_bench(self, tile_data=None):
+        """Add a path tile to the shared loot bag. Returns True if placed."""
+        tile = tile_data if tile_data is not None else self._pick_random_tile()
+        if tile is None:
+            return False
+        return self.try_add_loot(tile)
+
     def try_grant_egrem_tile_drop(self):
-        """Roll egrem kill → path tile drop into map_tile_bench."""
-        chance = REWARD_CONFIG.get("egrem_tile_drop_chance", 0.35)
+        """Roll egrem kill → path tile drop into loot bag."""
+        chance = REWARD_CONFIG.get("egrem_tile_drop_chance", 0.28)
         if random.random() >= chance:
             return False
         if self.try_add_tile_to_bench():
-            self._set_reward_toast("Path tile dropped!")
+            self._set_reward_toast("Path tile → loot bag")
             return True
-        self._set_reward_toast("Path tile drop (bench full)")
+        self._set_reward_toast("Loot bag full — tile lost")
         return False
 
     def _pick_upgrade_reward(self, prefer_wildcard=False):
@@ -95,17 +116,13 @@ class EconomyManager:
         return random.choice(pool) if pool else None
 
     def try_add_upgrade_to_bench(self, upgrade_id):
-        """Add an upgrade id to the first empty upgrade-bench slot."""
+        """Add an upgrade id to the shared loot bag."""
         if upgrade_id is None or upgrade_id not in UPGRADE_DEFS:
             return False
-        for i in range(len(self.game.upgrade_bench)):
-            if self.game.upgrade_bench[i] is None:
-                self.game.upgrade_bench[i] = upgrade_id
-                return True
-        return False
+        return self.try_add_loot(upgrade_id)
 
     def grant_wave_upgrade_rewards(self, wave_num):
-        """Grant upgrade loot for mini-boss / boss milestone waves."""
+        """Grant upgrade loot for mini-boss / boss milestone waves into loot bag."""
         mini_iv = REWARD_CONFIG.get("mini_boss_wave_interval", 5)
         boss_iv = REWARD_CONFIG.get("boss_wave_interval", 20)
         if wave_num <= 0:
@@ -116,7 +133,7 @@ class EconomyManager:
         if not is_boss and not is_mini:
             return 0
 
-        count = REWARD_CONFIG.get("boss_upgrade_count", 2) if is_boss else REWARD_CONFIG.get("mini_boss_upgrade_count", 1)
+        count = REWARD_CONFIG.get("boss_upgrade_count", 1) if is_boss else REWARD_CONFIG.get("mini_boss_upgrade_count", 1)
         granted = 0
         for _ in range(count):
             uid = self._pick_upgrade_reward(prefer_wildcard=is_boss)
@@ -125,14 +142,9 @@ class EconomyManager:
 
         if granted:
             label = "Boss" if is_boss else "Mini-boss"
-            names = []
-            # Show what landed in the last granted slots (best-effort toast)
-            for slot in self.game.upgrade_bench:
-                if slot and slot in UPGRADE_DEFS:
-                    names.append(UPGRADE_DEFS[slot]["name"])
             self._set_reward_toast(f"{label} loot: +{granted} upgrade{'s' if granted != 1 else ''}")
         elif count:
-            self._set_reward_toast("Upgrade loot (bench full)")
+            self._set_reward_toast("Loot bag full — upgrade lost")
         return granted
 
     def _set_reward_toast(self, text, frames=240):
@@ -140,6 +152,33 @@ class EconomyManager:
         frame = getattr(self.game, "current_frame", 0)
         self.game.reward_toast_text = text
         self.game.reward_toast_until = frame + frames
+
+    def clear_loot_selection(self):
+        self.game.selected_loot = None
+        self.game.selected_map_tile = None
+        self.game.selected_upgrade = None
+
+    def select_loot(self, idx):
+        """Select a loot_bag slot (tile or upgrade)."""
+        bag = self._loot_bag()
+        if idx < 0 or idx >= len(bag) or bag[idx] is None:
+            return False
+        item = bag[idx]
+        if self.game.selected_loot == idx:
+            self.clear_loot_selection()
+            return True
+        self.game.selected_loot = idx
+        if _is_tile_slot(item):
+            self.game.selected_map_tile = idx
+            self.game.selected_upgrade = None
+            self.game.selected_tile_rotation = 0
+        elif _is_upgrade_slot(item):
+            self.game.selected_upgrade = idx
+            self.game.selected_map_tile = None
+        else:
+            self.clear_loot_selection()
+            return False
+        return True
 
     def get_merge_preview_info(self):
         """Return dict with merge preview drawing info, or None if not active."""
@@ -189,7 +228,7 @@ class EconomyManager:
         self.game.egrem_consecutive = 0
 
     def select_for_merge(self, bench_idx, frame=0):
-        if bench_idx < 0 or bench_idx >= 10 or self.game.bench[bench_idx] is None:
+        if bench_idx < 0 or bench_idx >= self._tower_bench_size() or self.game.bench[bench_idx] is None:
             return False
 
         # Clear stale selection: indices can point to empty slots after merge/egrem
@@ -300,7 +339,7 @@ class EconomyManager:
         self.game.bench[idx1] = None
         self.game.bench[idx2] = None
 
-        for i in range(10):
+        for i in range(self._tower_bench_size()):
             if self.game.bench[i] is None:
                 self.game.bench[i] = egrem
                 break
@@ -358,7 +397,7 @@ class EconomyManager:
         self.game.bench[idx1] = None
         self.game.bench[idx2] = None
 
-        for i in range(10):
+        for i in range(self._tower_bench_size()):
             if self.game.bench[i] is None:
                 self.game.bench[i] = self.game.merge_preview
                 break
@@ -384,7 +423,7 @@ class EconomyManager:
             return False
         if self.game.grid[gy][gx] != '.':
             return False
-        if bench_idx is None or bench_idx >= 10 or self.game.bench[bench_idx] is None:
+        if bench_idx is None or bench_idx >= self._tower_bench_size() or self.game.bench[bench_idx] is None:
             return False
         tower = self.game.bench[bench_idx]
         tower.x = gx
@@ -400,11 +439,11 @@ class EconomyManager:
         return True
 
     def sell_from_bench(self, idx):
-        if idx < 0 or idx >= 10 or self.game.bench[idx] is None:
+        if idx < 0 or idx >= self._tower_bench_size() or self.game.bench[idx] is None:
             return
         t = self.game.bench.pop(idx)
-        value = 2 + t.get_merge_tier() * 2
-        self.game.gold += value
+        value = int((2 + t.get_merge_tier() * 2) * ECONOMY_CONFIG.get("sell_bench_mult", 0.5))
+        self.game.gold += max(1, value)
         self.game.bench.insert(idx, None)
         self.game.selected_tower = self.game.merge_tower_1 = self.game.merge_tower_2 = self.game.merge_preview = None
         self.game.egrem_preview = False
@@ -412,10 +451,10 @@ class EconomyManager:
         self.reset_egrem_consecutive()
 
     def sell_tower_from_grid(self, gx, gy):
-        """Remove tower at (gx, gy) and refund 60% of gold_invested."""
+        """Remove tower at (gx, gy) and refund a fraction of gold_invested."""
         for t in self.game.towers[:]:
             if t.x == gx and t.y == gy:
-                refund = int(t.gold_invested * 0.6)
+                refund = int(t.gold_invested * ECONOMY_CONFIG.get("sell_grid_refund", 0.45))
                 self.game.gold += refund
                 self.game.towers.remove(t)
                 self.game.grid[gy][gx] = '.'
@@ -469,10 +508,14 @@ class EconomyManager:
             return False
         if len(tower.upgrades) >= tower.UPGRADE_CAPACITY:
             return False
-        if self.game.upgrade_bench[bench_idx] != upgrade_id:
+        bag = self._loot_bag()
+        if bench_idx < 0 or bench_idx >= len(bag) or bag[bench_idx] != upgrade_id:
             return False
 
         tower.upgrades.append(upgrade_id)
         tower._calculate_stats()
-        self.game.upgrade_bench[bench_idx] = None
+        bag[bench_idx] = None
+        if getattr(self.game, "selected_loot", None) == bench_idx:
+            self.clear_loot_selection()
+        self.game.selected_upgrade = None
         return True
