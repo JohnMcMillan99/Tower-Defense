@@ -3,7 +3,7 @@ from models.enemy import Enemy
 from models.assimilator import Assimilator
 from core.strategy_analyzer import StrategyAnalyzer
 from core.sort_orchestrator import unlocked_types_for_wave, default_wave_size
-from config import log_debug, REWARD_CONFIG, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG
+from config import log_debug, REWARD_CONFIG, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG, RUN_FLOW_CONFIG
 from models.drone_data import DroneData
 
 
@@ -220,8 +220,12 @@ class WaveManager:
         self.game.noise_injections = int(getattr(self.game, "noise_injections", 0)) + 1
         return n
 
-    def start_next_wave(self, frame=None):
+    def start_next_wave(self, frame=None, forced=False):
         if self.game.wave_active:
+            return
+        from config import play_rules
+        pause = getattr(self.game, "paused", False) is True
+        if not forced and not play_rules(self.game, pause_open=pause).next_wave:
             return
         self.game.wave_active = True
         f = frame if frame is not None else getattr(self.game, "current_frame", 0)
@@ -338,12 +342,15 @@ class WaveManager:
         for t in self.game.towers:
             t.update(self.game.enemies, frame, self.game)
 
-        # Apply auras
+        # Apply auras (int + cap: never walk a 99-range Overwatch diamond)
         for t in self.game.towers:
             if "resist_2" in t.upgrades:
-                for dy in range(-t.range, t.range + 1):
-                    for dx in range(-t.range, t.range + 1):
-                        if abs(dx) + abs(dy) > t.range:
+                aura_r = max(0, min(8, int(getattr(t, "range", 0) or 0)))
+                if aura_r < 1:
+                    continue
+                for dy in range(-aura_r, aura_r + 1):
+                    for dx in range(-aura_r, aura_r + 1):
+                        if abs(dx) + abs(dy) > aura_r:
                             continue
                         nx, ny = t.x + dx, t.y + dy
                         if 0 <= nx < len(self.game.enemy_grid[0]) and 0 <= ny < len(self.game.enemy_grid):
@@ -423,9 +430,13 @@ class WaveManager:
                 self.game.enemies.remove(e)
         if self.game.lives <= 0:
             self.game.game_over = True
+            self.game.run_over_reason = "defeat"
             self.game.final_wave = self.game.round_num
             self.game.final_gold = self.game.gold
             self.game.wave_active = False
+            cb = getattr(self.game, "on_run_over", None)
+            if callable(cb):
+                cb("defeat")
         if self.game.wave_active and not self.game.enemies and not self.game.spawn_queue:
             cleared_wave = self.game.round_num
             raw_bonus = (len(self.game.towers) * 3 + cleared_wave * 4) // 2
@@ -437,8 +448,8 @@ class WaveManager:
             # Add XP bonus for wave clear (full mode only)
             if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'xp'):
                 self.game.xp += cleared_wave * 50
-            self.game.wave_bonus_text = f"+{bonus} bonus"
-            self.game.wave_bonus_show_until = frame + 240
+            self.game.wave_bonus_text = f"Wave {cleared_wave} cleared  ·  +{bonus} gold"
+            self.game.wave_bonus_show_until = frame + 300
             # Mini-boss / boss milestone upgrade loot (tunable in config.REWARD_CONFIG)
             self.game.economy.grant_wave_upgrade_rewards(cleared_wave)
             self._snapshot_wave_combat_stats(frame)
@@ -447,9 +458,22 @@ class WaveManager:
             # Check for SPL level up (full mode only)
             if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'check_spl_level_up'):
                 self.game.check_spl_level_up()
-            # Auto-start next wave if auto mode is enabled
-            if self.game.auto_mode:
-                self.start_next_wave(frame)
+            cleared_cb = getattr(self.game, "on_wave_cleared", None)
+            if callable(cleared_cb):
+                cleared_cb(cleared_wave)
+            victory_waves = int(RUN_FLOW_CONFIG.get("victory_waves") or 0)
+            endless = bool(RUN_FLOW_CONFIG.get("endless_after_victory", False))
+            if victory_waves and cleared_wave >= victory_waves and not endless:
+                self.game.game_over = True
+                self.game.run_over_reason = "victory"
+                self.game.final_wave = cleared_wave
+                self.game.final_gold = self.game.gold
+                over_cb = getattr(self.game, "on_run_over", None)
+                if callable(over_cb):
+                    over_cb("victory")
+                return
+            if RUN_FLOW_CONFIG.get("mode") == "auto_chain" or self.game.auto_mode:
+                self.start_next_wave(frame, forced=True)
 
     def spawn_enemy_at_position(self, enemy_type, x, y, wave_num=1):
         """Spawn an enemy at a specific grid position (for egrem towers)."""

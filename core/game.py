@@ -9,7 +9,7 @@ from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
 from data.loader import DataLoader
 from utils.path_generator import PathGenerator
-from config import log_debug, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG, LOOT_CONFIG, BENCH_CONFIG
+from config import log_debug, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG, LOOT_CONFIG, BENCH_CONFIG, WAVE_CONFIG
 from .economy import EconomyManager
 from .wave_manager import WaveManager
 from .board import BoardManager
@@ -25,7 +25,7 @@ class Direction(Enum):
 
 
 class Game:
-    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, minimal_mode=False):
+    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, minimal_mode=False, run_setup=None):
         log_debug("Game.__init__ start", {"height": height, "width": width, "web_mode": web_mode, "minimal_mode": minimal_mode}, location="game.py")
 
         # Core playable area (center of expanded grid)
@@ -52,7 +52,7 @@ class Game:
         self.enemy_grid = [[[] for _ in range(self.width)] for _ in range(self.height)]
         self.towers = []
         self.gold = int(ECONOMY_CONFIG.get("starting_gold", 25))
-        self.lives = 20
+        self.lives = int(ECONOMY_CONFIG.get("starting_lives", 20))
         self.round_num = 1
         self.wave_active = False
         self.paused = False
@@ -63,16 +63,13 @@ class Game:
         # Shared loot bag: path tiles + upgrades (limited — use them or lose drops)
         bag_slots = int(LOOT_CONFIG.get("bag_slots", 4))
         self.loot_bag = [None] * bag_slots
-        # Compat aliases — same list object as loot_bag (legacy call sites)
-        self.map_tile_bench = self.loot_bag
-        self.upgrade_bench = self.loot_bag
         self.selected_tower = None
-        self.selected_loot = None  # index into loot_bag
-        # Compat: selected_map_tile / selected_upgrade both map to selected_loot
+        self.selected_loot = None  # index into loot_bag (tile or upgrade)
         log_debug("Shop and bench initialized", location="game.py")
-        self.selected_map_tile = None  # Selected tile from loot bag
-        self.selected_upgrade = None  # Selected upgrade from loot bag
         self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
+        self.run_over_reason = None  # None | defeat | forfeit | victory
+        self.on_wave_cleared = None
+        self.on_run_over = None
         self.merge_tower_1 = None
         self.merge_tower_2 = None
         self.merge_preview = None
@@ -82,9 +79,10 @@ class Game:
         self.final_gold = self.gold
         self.spawn_queue = []
         self.spawn_timer = 0
-        self.spawn_interval = 30
+        self.spawn_interval = int(WAVE_CONFIG.get("spawn_interval", 30))
         self.wave_bonus_text = ""
         self.wave_bonus_show_until = 0
+        self.combat_pops = []
         # Single inspector panel (replaces upgrade_dialog / enemy stats / tower stats overlays)
         self.inspector_mode = None  # None | "tower" | "enemy" | "stats"
         self.inspector_tower = None
@@ -119,7 +117,10 @@ class Game:
         force_dir = SORT_CONFIG.get("force_directive")
         force_mods = SORT_CONFIG.get("force_modifiers")
         force_hidden = SORT_CONFIG.get("force_hidden")
-        if force_dir is not None or force_mods is not None or force_hidden is not None:
+        if run_setup is not None:
+            self.run_setup = run_setup
+            self.run_seed = int(getattr(run_setup, "seed", self.run_seed))
+        elif force_dir is not None or force_mods is not None or force_hidden is not None:
             self.run_setup = RunSetup(
                 seed=self.run_seed,
                 directive_name=force_dir,
@@ -222,6 +223,30 @@ class Game:
         self.inspector_tower = None
         self.inspector_enemy = None
         self.inspector_scroll = 0
+
+    def _loot_item(self, idx=None):
+        i = self.selected_loot if idx is None else idx
+        if i is None or not isinstance(self.loot_bag, list):
+            return None
+        if 0 <= i < len(self.loot_bag):
+            return self.loot_bag[i]
+        return None
+
+    @property
+    def selected_map_tile(self):
+        """Index into loot_bag when the selected item is a path tile; else None."""
+        item = self._loot_item()
+        if isinstance(item, dict) and "name" in item and "width" in item:
+            return self.selected_loot
+        return None
+
+    @property
+    def selected_upgrade(self):
+        """Index into loot_bag when the selected item is an upgrade id; else None."""
+        item = self._loot_item()
+        if isinstance(item, str):
+            return self.selected_loot
+        return None
 
     def add_intel(self, amount):
         """Raise scout intel (clamped). Returns new intel value."""

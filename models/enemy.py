@@ -37,9 +37,11 @@ class Enemy:
 
     def _calculate_stats(self):
         from data.units import WEB_MODE_CONFIG
+        from config import WAVE_CONFIG
         base_stats = self.TYPES.get(self.enemy_type, self.TYPES["Drone"])
         difficulty = base_stats["difficulty"]
-        wave_scale = 1.0 + (self.wave_num - 1) * 3.5 * difficulty
+        hp_scale = float(WAVE_CONFIG.get("hp_scale_per_wave", 3.5))
+        wave_scale = 1.0 + (self.wave_num - 1) * hp_scale * difficulty
 
         # Apply web mode scaling if enabled
         web_scale = WEB_MODE_CONFIG["enemy_scale"] if self.web_mode else 1.0

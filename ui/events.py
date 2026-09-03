@@ -1,32 +1,40 @@
 import pygame
-from config import log_debug
+from config import log_debug, play_rules, HUD_CONFIG
 
 
 class EventHandler:
-    def __init__(self, game, renderer):
+    def __init__(self, game, renderer, app=None):
         self.game = game
         self.renderer = renderer
+        self.app = app
         self.running = True
 
     @property
     def layout(self):
         return self.renderer.layout
 
+    def _rules(self):
+        pause = bool(self.app.pause_open) if self.app else (getattr(self.game, "paused", False) is True)
+        return play_rules(self.game, pause_open=pause)
+
     def handle_events(self, frame):
-        """Handle all Pygame events."""
+        """Handle all Pygame events (standalone / tests). App uses process_event."""
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            elif event.type == pygame.KEYDOWN:
-                self._handle_keydown(event)
-            elif event.type == pygame.MOUSEWHEEL:
-                self._handle_mousewheel(event)
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                self._handle_mousebuttondown(event, frame)
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self._handle_mousebuttonup(event)
-            elif event.type == pygame.MOUSEMOTION:
-                self._handle_mousemotion(event)
+            self.process_event(event, frame)
+
+    def process_event(self, event, frame):
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.KEYDOWN:
+            self._handle_keydown(event)
+        elif event.type == pygame.MOUSEWHEEL:
+            self._handle_mousewheel(event)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            self._handle_mousebuttondown(event, frame)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            self._handle_mousebuttonup(event)
+        elif event.type == pygame.MOUSEMOTION:
+            self._handle_mousemotion(event)
 
     def _handle_keydown(self, event):
         """Handle key press events."""
@@ -43,8 +51,10 @@ class EventHandler:
             self.renderer.camera_y = 0
             self.renderer.zoom_level = 1.0
         elif pygame.K_1 <= event.key <= pygame.K_4:
+            if not self._rules().place_tiles and not self._rules().shop:
+                return
             slot_idx = event.key - pygame.K_1
-            bag = getattr(self.game, "loot_bag", self.game.upgrade_bench)
+            bag = getattr(self.game, "loot_bag", None) or []
             if slot_idx < len(bag) and bag[slot_idx] is not None:
                 self.game.economy.select_loot(slot_idx)
 
@@ -68,7 +78,7 @@ class EventHandler:
     def _handle_mousebuttondown(self, event, frame):
         mx, my = event.pos
         if event.button == 3:
-            if self.game.selected_map_tile is not None:
+            if self.game.selected_map_tile is not None and self._rules().place_tiles:
                 self.game.selected_tile_rotation = (self.game.selected_tile_rotation + 1) % 4
             return
         if event.button == 1:
@@ -93,7 +103,10 @@ class EventHandler:
         L = self.layout
 
         if self.game.game_over:
-            self.restart_game()
+            if self.app:
+                self.app.return_to_run_select()
+            else:
+                self.restart_game()
             return
 
         # Inspector panel (tabs / content / close) before other right-column handlers
@@ -161,16 +174,29 @@ class EventHandler:
             else:
                 self.game.open_inspector("stats")
             return
+        hud = L.hud_toggle_rects()
+        if hud["bars"].collidepoint(mx, my):
+            HUD_CONFIG["enemy_health_bars"] = not bool(HUD_CONFIG.get("enemy_health_bars", True))
+            return
+        if hud["names"].collidepoint(mx, my):
+            HUD_CONFIG["enemy_names"] = not bool(HUD_CONFIG.get("enemy_names", True))
+            return
+        if hud.get("pops") and hud["pops"].collidepoint(mx, my):
+            HUD_CONFIG["damage_numbers"] = not bool(HUD_CONFIG.get("damage_numbers", True))
+            return
 
         play, next_wave, auto = L.panel_control_rects(show_spl=L.show_spl(self.game))
         if play.collidepoint(mx, my):
-            self.game.paused = not self.game.paused
+            return  # Esc opens PauseMenu; this is not a build-pause
         elif next_wave.collidepoint(mx, my):
-            self.game.wave_manager.start_next_wave(frame)
+            if self._rules().next_wave:
+                self.game.wave_manager.start_next_wave(frame)
         elif auto.collidepoint(mx, my):
             self.game.auto_mode = not self.game.auto_mode
 
     def _handle_shop_click(self, mx, my):
+        if not self._rules().shop:
+            return
         L = self.layout
         for i in range(5):
             if L.shop_card_rect(i).collidepoint(mx, my):
@@ -180,6 +206,8 @@ class EventHandler:
             self.game.economy.reroll_shop()
 
     def _handle_bench_click(self, mx, my, frame):
+        if not self._rules().merge and not self._rules().place_towers:
+            return
         L = self.layout
         if self.game.merge_preview or self.game.egrem_preview:
             idx1, idx2 = self.game.merge_tower_1, self.game.merge_tower_2
@@ -218,7 +246,7 @@ class EventHandler:
 
     def _handle_map_bench_click(self, mx, my):
         L = self.layout
-        bag = getattr(self.game, "loot_bag", self.game.map_tile_bench)
+        bag = getattr(self.game, "loot_bag", None) or []
         for i in range(len(bag)):
             if L.loot_card_rect(i).collidepoint(mx, my):
                 if bag[i] is not None:
@@ -242,7 +270,12 @@ class EventHandler:
 
         if self.game.selected_map_tile is not None:
             tile_data = self.game.loot_bag[self.game.selected_map_tile]
-            if tile_data and isinstance(tile_data, dict) and self.game.can_place_tile(tile_data, gx, gy, self.game.selected_tile_rotation):
+            if (
+                tile_data
+                and isinstance(tile_data, dict)
+                and self._rules().place_tiles
+                and self.game.can_place_tile(tile_data, gx, gy, self.game.selected_tile_rotation)
+            ):
                 self.game.place_map_tile(tile_data, gx, gy, self.game.selected_tile_rotation)
                 tile_cells = self.game._get_tile_path_cells(tile_data, gx, gy, self.game.selected_tile_rotation)
                 if self.game.should_expand_map(tile_cells):

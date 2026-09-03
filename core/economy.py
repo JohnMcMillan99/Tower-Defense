@@ -3,7 +3,7 @@ from models.tower import Tower
 from data.units import UNIT_TYPES
 from data.tiles import get_tile_types
 from data.upgrades import UPGRADE_DEFS
-from config import REWARD_CONFIG, ECONOMY_CONFIG, BENCH_CONFIG
+from config import REWARD_CONFIG, ECONOMY_CONFIG, BENCH_CONFIG, play_rules
 
 
 def _is_tile_slot(item):
@@ -22,7 +22,16 @@ class EconomyManager:
         return len(self.game.bench)
 
     def _loot_bag(self):
-        return getattr(self.game, "loot_bag", None) or self.game.map_tile_bench
+        return getattr(self.game, "loot_bag", None) or []
+
+    def _rules(self):
+        pause = getattr(self.game, "paused", False) is True
+        return play_rules(self.game, pause_open=pause)
+
+    def _bind_tower(self, tower):
+        if tower is not None:
+            tower.game = self.game
+        return tower
 
     def generate_shop(self, clear_existing=False):
         """Fill shop with tower offers. If clear_existing, replace all 5 slots."""
@@ -35,13 +44,15 @@ class EconomyManager:
                 self.game.shop[i] = {"type": typ, "cost": cost}
 
     def move_to_bench(self, shop_idx):
+        if not self._rules().shop:
+            return False
         if shop_idx < 0 or shop_idx >= 5 or self.game.shop[shop_idx] is None:
             return False
         card = self.game.shop[shop_idx]
         if self.game.gold < card["cost"]:
             return False
 
-        tower = Tower(0, 0, card["type"])
+        tower = self._bind_tower(Tower(0, 0, card["type"]))
         tower.gold_invested = card["cost"]
         for i in range(self._tower_bench_size()):
             if self.game.bench[i] is None:
@@ -59,6 +70,8 @@ class EconomyManager:
         return False
 
     def reroll_shop(self):
+        if not self._rules().shop:
+            return False
         if self.game.gold < self.game.reroll_cost:
             return False
         self.game.gold -= self.game.reroll_cost
@@ -155,8 +168,6 @@ class EconomyManager:
 
     def clear_loot_selection(self):
         self.game.selected_loot = None
-        self.game.selected_map_tile = None
-        self.game.selected_upgrade = None
 
     def select_loot(self, idx):
         """Select a loot_bag slot (tile or upgrade)."""
@@ -167,18 +178,13 @@ class EconomyManager:
         if self.game.selected_loot == idx:
             self.clear_loot_selection()
             return True
-        self.game.selected_loot = idx
-        if _is_tile_slot(item):
-            self.game.selected_map_tile = idx
-            self.game.selected_upgrade = None
-            self.game.selected_tile_rotation = 0
-        elif _is_upgrade_slot(item):
-            self.game.selected_upgrade = idx
-            self.game.selected_map_tile = None
-        else:
-            self.clear_loot_selection()
-            return False
-        return True
+        if _is_tile_slot(item) or _is_upgrade_slot(item):
+            self.game.selected_loot = idx
+            if _is_tile_slot(item):
+                self.game.selected_tile_rotation = 0
+            return True
+        self.clear_loot_selection()
+        return False
 
     def get_merge_preview_info(self):
         """Return dict with merge preview drawing info, or None if not active."""
@@ -228,6 +234,8 @@ class EconomyManager:
         self.game.egrem_consecutive = 0
 
     def select_for_merge(self, bench_idx, frame=0):
+        if not self._rules().merge:
+            return False
         if bench_idx < 0 or bench_idx >= self._tower_bench_size() or self.game.bench[bench_idx] is None:
             return False
 
@@ -320,6 +328,8 @@ class EconomyManager:
 
     def _complete_egrem(self):
         """Create Egrem tower and put on bench; remove the two source towers."""
+        if not self._rules().merge:
+            return False
         if self.game.merge_tower_1 is None or self.game.merge_tower_2 is None:
             return False
         cost = self.game.current_merge_cost
@@ -330,7 +340,7 @@ class EconomyManager:
 
         idx1, idx2 = sorted([self.game.merge_tower_1, self.game.merge_tower_2])
         t1, t2 = self.game.bench[idx1], self.game.bench[idx2]
-        egrem = Tower(0, 0, tower_type="Nanite Swarm")
+        egrem = self._bind_tower(Tower(0, 0, tower_type="Nanite Swarm"))
         egrem.gold_invested = (t1.gold_invested if t1 else 0) + (t2.gold_invested if t2 else 0) + cost
 
         egrem.egrem_source_types = [t1.base_type, t2.base_type]
@@ -381,6 +391,8 @@ class EconomyManager:
         }
 
     def confirm_merge(self):
+        if not self._rules().merge:
+            return False
         if None in (self.game.merge_tower_1, self.game.merge_tower_2, self.game.merge_preview):
             return False
         idx1, idx2 = sorted([self.game.merge_tower_1, self.game.merge_tower_2])
@@ -392,6 +404,7 @@ class EconomyManager:
             return False
         self.game.gold -= cost
         self.reset_egrem_consecutive()
+        self._bind_tower(self.game.merge_preview)
         self.game.merge_preview.gold_invested = (t1.gold_invested if t1 else 0) + (t2.gold_invested if t2 else 0) + cost
 
         self.game.bench[idx1] = None
@@ -419,6 +432,8 @@ class EconomyManager:
         self.reset_egrem_consecutive()
 
     def place_tower(self, gx, gy, bench_idx=None):
+        if not self._rules().place_towers:
+            return False
         if not (0 <= gx < self.game.width and 0 <= gy < self.game.height):
             return False
         if self.game.grid[gy][gx] != '.':
@@ -426,6 +441,7 @@ class EconomyManager:
         if bench_idx is None or bench_idx >= self._tower_bench_size() or self.game.bench[bench_idx] is None:
             return False
         tower = self.game.bench[bench_idx]
+        self._bind_tower(tower)
         tower.x = gx
         tower.y = gy
         self.game.towers.append(tower)
@@ -488,10 +504,24 @@ class EconomyManager:
             chosen.append(random.choice(wildcard))
         return chosen[:3]
 
-    def apply_upgrade(self, tower, upgrade_id):
-        if upgrade_id not in UPGRADE_DEFS or upgrade_id in tower.upgrades:
+    def can_apply_upgrade(self, tower, upgrade_id):
+        """True if this firmware belongs on this tower (wildcard = any)."""
+        if tower is None or upgrade_id not in UPGRADE_DEFS:
+            return False
+        if upgrade_id in tower.upgrades:
             return False
         if len(tower.upgrades) >= tower.UPGRADE_CAPACITY:
+            return False
+        u = UPGRADE_DEFS[upgrade_id]
+        tags = set(u.get("traits") or [])
+        if "wildcard" in tags:
+            return True
+        needed = (tags | set(u.get("synergizes_with") or [])) - {"wildcard"}
+        tower_traits = set(tower.get_traits())
+        return bool(needed and needed & tower_traits)
+
+    def apply_upgrade(self, tower, upgrade_id):
+        if not self.can_apply_upgrade(tower, upgrade_id):
             return False
         u = UPGRADE_DEFS[upgrade_id]
         if self.game.gold < u["cost"]:
@@ -504,9 +534,7 @@ class EconomyManager:
 
     def apply_upgrade_from_bench(self, tower, upgrade_id, bench_idx):
         """Apply upgrade from bench to tower (no additional gold cost)."""
-        if upgrade_id not in UPGRADE_DEFS or upgrade_id in tower.upgrades:
-            return False
-        if len(tower.upgrades) >= tower.UPGRADE_CAPACITY:
+        if not self.can_apply_upgrade(tower, upgrade_id):
             return False
         bag = self._loot_bag()
         if bench_idx < 0 or bench_idx >= len(bag) or bag[bench_idx] != upgrade_id:
@@ -517,5 +545,4 @@ class EconomyManager:
         bag[bench_idx] = None
         if getattr(self.game, "selected_loot", None) == bench_idx:
             self.clear_loot_selection()
-        self.game.selected_upgrade = None
         return True

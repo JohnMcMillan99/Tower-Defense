@@ -6,7 +6,8 @@ from models.tower import Tower
 from data.upgrades import UPGRADE_DEFS
 from ui.swarm_fx import SwarmFXManager
 from ui.layout import UILayout
-from config import log_debug
+from ui.glyphs import blit_glyph
+from config import log_debug, HUD_CONFIG
 
 
 class Renderer:
@@ -102,6 +103,14 @@ class Renderer:
         self._show_fps = getattr(game, 'show_fps', False)
 
         # Tower colors
+        self.enemy_accents = {
+            "Drone": (0, 210, 90),
+            "Scout": (90, 255, 170),
+            "Harvester": (190, 220, 50),
+            "Adaptor": (40, 190, 210),
+            "Assimilator": (210, 80, 255),
+        }
+
         self.tower_colors = {
             "Neural Processor": (70, 130, 255),
             "Plasma Capacitor": (100, 255, 100),
@@ -274,6 +283,7 @@ class Renderer:
         self._draw_attack_beams(frame)
         self._draw_towers()
         self._draw_enemies()
+        self._flush_combat_pops()
         self._draw_latch_effects()
         self._draw_wave_bonus(frame)
         self._draw_game_over()
@@ -333,36 +343,56 @@ class Renderer:
         # Draw all swarm effects
         self.swarm_fx.draw(self.screen)
 
+    def _hud_panel(self, rect, bg, title=None, accent=None):
+        pygame.draw.rect(self.screen, bg, rect)
+        if accent:
+            pygame.draw.rect(self.screen, accent, (rect.x, rect.y, rect.w, 2))
+        pygame.draw.rect(self.screen, self.GRID, rect, 1)
+        if title:
+            self.screen.blit(self.font_s.render(title, True, self.TEXT), (rect.x + 8, rect.y + 3))
+
+    def _hud_card(self, rect, fill, selected=False, empty=False, accent=None):
+        pygame.draw.rect(self.screen, fill, rect)
+        border = self.CARD_SEL if selected else ((50, 50, 60) if empty else (90, 95, 110))
+        pygame.draw.rect(self.screen, border, rect, 2 if selected else 1)
+        if accent and not empty:
+            pygame.draw.rect(self.screen, accent, (rect.x + 2, rect.y + 2, rect.w - 4, 3))
+
+    def _hud_chip(self, rect, label, on=False):
+        pygame.draw.rect(self.screen, self.PANEL_BTN_SEL if on else self.PANEL_BTN, rect)
+        pygame.draw.rect(self.screen, self.TEXT, rect, 1)
+        lbl = self.font_s.render(label, True, self.TEXT)
+        self.screen.blit(lbl, (rect.centerx - lbl.get_width() // 2, rect.centery - 6))
+
     def _draw_shop(self):
         """Draw the towers-only shop section (left 5/8 of top HUD)."""
         L = self.layout
         shop = L.shop_region()
-        pygame.draw.rect(self.screen, self.SHOP_BG, shop)
-        pygame.draw.line(self.screen, self.GRID, (shop.right, 0), (shop.right, self.SHOP_H), 2)
-        pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H), (self.GRID_W, self.SHOP_H), 2)
-        self.screen.blit(self.font_s.render("SHOP", True, self.TEXT), (shop.x + 12, 2))
+        self._hud_panel(shop, self.SHOP_BG, "SHOP", accent=(70, 120, 190))
+        pygame.draw.line(self.screen, self.GRID, (shop.right, 0), (shop.right, self.SHOP_H), 1)
 
         for i in range(5):
             r = L.shop_card_rect(i)
             card = self.game.shop[i]
-            col = self.CARD_EMP if card is None else self.CARD_BG
-            pygame.draw.rect(self.screen, col, r)
-            pygame.draw.rect(self.screen, self.TEXT, r, 1 if card else 2)
+            accent = self.tower_colors.get(card["type"]) if card else None
+            self._hud_card(r, self.CARD_EMP if card is None else self.CARD_BG, empty=card is None, accent=accent)
             if card:
-                self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (r.x + 5, r.y + 10))
-                self.screen.blit(self.font_s.render(f"${card['cost']}", True, self.TEXT), (r.x + 5, r.y + 75))
+                blit_glyph(self.screen, card["type"], pygame.Rect(r.x, r.y + 8, r.w, 44), pad=6)
+                self.screen.blit(self.font_s.render(card["type"][:8], True, self.TEXT), (r.x + 5, r.y + 56))
+                self.screen.blit(self.font_s.render(f"${card['cost']}", True, (180, 210, 140)), (r.x + 5, r.y + 76))
 
         rr = L.reroll_rect()
-        pygame.draw.rect(self.screen, self.CARD_BG, rr)
-        pygame.draw.rect(self.screen, self.TEXT, rr, 1)
-        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rr.x + 10, rr.y + 10))
+        self._hud_card(rr, self.CARD_BG, accent=(70, 120, 190))
+        self.screen.blit(self.font_s.render("R", True, self.TEXT), (rr.x + 12, rr.y + 4))
+        cost = getattr(self.game, "reroll_cost", 3)
+        self.screen.blit(self.font_s.render(f"${cost}", True, (180, 210, 140)), (rr.x + 4, rr.y + 18))
 
     def _draw_bench(self, frame):
         """Draw the tower bench (full width under shop + map tiles)."""
         L = self.layout
-        pygame.draw.rect(self.screen, self.BENCH_BG, (0, self.SHOP_H, self.GRID_W, self.BENCH_H))
-        pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H + self.BENCH_H), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
-        self.screen.blit(self.font_s.render("BENCH", True, self.TEXT), (15, self.SHOP_H + 5))
+        bench = pygame.Rect(0, self.SHOP_H, self.GRID_W, self.BENCH_H)
+        self._hud_panel(bench, self.BENCH_BG, "BENCH", accent=(90, 140, 90))
+        pygame.draw.line(self.screen, self.GRID, (0, self.SHOP_H + self.BENCH_H), (self.GRID_W, self.SHOP_H + self.BENCH_H), 1)
 
         for i in range(len(self.game.bench)):
             r = L.bench_card_rect(i)
@@ -375,10 +405,13 @@ class Renderer:
                 elif merge_type == "hybrid":
                     col = self.CARD_HYBRID
                 # egrem and base keep CARD_BG
-            if i in (self.game.merge_tower_1, self.game.merge_tower_2) and self.game.bench[i] is not None:
+            selected = i in (self.game.merge_tower_1, self.game.merge_tower_2) and self.game.bench[i] is not None
+            if selected:
                 col = self.CARD_SEL
-            pygame.draw.rect(self.screen, col, r)
-            pygame.draw.rect(self.screen, self.TEXT, r, 2)
+            accent = None
+            if self.game.bench[i] and self.game.bench[i].base_type != "Nanite Swarm":
+                accent = self.tower_colors.get(self.game.bench[i].base_type)
+            self._hud_card(r, col, selected=selected, empty=self.game.bench[i] is None, accent=accent)
             if self.game.bench[i]:
                 t = self.game.bench[i]
                 # Apply tier visual effects (full mode only)
@@ -395,15 +428,15 @@ class Renderer:
                     self.screen.blit(self.font_s.render(f"T{t.get_merge_tier()}", True, self.TEXT), (x+5, y+50))
                 else:
                     display_name = t.get_display_name() if hasattr(t, 'get_display_name') else t.base_type
-                    self.screen.blit(self.font_s.render(display_name[:8], True, self.TEXT), (x+5, y+5))
-                    self.screen.blit(self.font_s.render(f"D:{t.dmg}", True, self.TEXT), (x+5, y+30))
+                    blit_glyph(self.screen, t.base_type, pygame.Rect(x, y + 2, r.w, 32), pad=4)
+                    self.screen.blit(self.font_s.render(display_name[:8], True, self.TEXT), (x+5, y+36))
                     tier_label = f"T{t.get_merge_tier()}"
                     mtype = t.get_merge_type()
                     if mtype == "pure" and t.merge_generation >= 1:
                         tier_label += " Pure"
                     elif mtype == "hybrid":
                         tier_label += " Hyb"
-                    self.screen.blit(self.font_s.render(tier_label, True, self.TEXT), (x+5, y+50))
+                    self.screen.blit(self.font_s.render(f"D:{t.dmg} {tier_label}", True, self.TEXT), (x+5, y+52))
                     if t.merge_generation >= 1 and hasattr(t, 'calculate_purity'):
                         purity = t.calculate_purity()
                         p_col = (100, 255, 100) if purity == 100 else (255, 180, 60)
@@ -423,25 +456,19 @@ class Renderer:
         """Draw shared loot bag (path tiles + upgrades) in the top-right HUD column."""
         L = self.layout
         col = L.map_column_region()
-        pygame.draw.rect(self.screen, self.SHOP_BG, col)
-        bag = getattr(self.game, "loot_bag", self.game.map_tile_bench)
+        bag = getattr(self.game, "loot_bag", None) or []
         filled = sum(1 for s in bag if s is not None)
-        self.screen.blit(
-            self.font_s.render(f"LOOT {filled}/{len(bag)}", True, self.TEXT),
-            (col.x + 8, 2),
-        )
+        self._hud_panel(col, (16, 16, 24), f"LOOT  {filled}/{len(bag)}", accent=(140, 90, 190))
 
         selected = getattr(self.game, "selected_loot", None)
-        if selected is None:
-            selected = self.game.selected_map_tile if self.game.selected_map_tile is not None else self.game.selected_upgrade
 
         for i, item in enumerate(bag):
             r = L.loot_card_rect(i)
             card_col = self.CARD_EMP if item is None else self.CARD_BG
             if i == selected:
                 card_col = self.CARD_SEL
-            pygame.draw.rect(self.screen, card_col, r)
-            pygame.draw.rect(self.screen, self.TEXT, r, 2)
+            tag_acc = (70, 130, 170) if isinstance(item, dict) else ((140, 90, 190) if item is not None else None)
+            self._hud_card(r, card_col, selected=i == selected, empty=item is None, accent=tag_acc)
             if item is None:
                 continue
             if isinstance(item, dict) and "name" in item:
@@ -594,15 +621,15 @@ class Renderer:
     def _draw_right_panel(self):
         """Draw the right panel with game stats and controls."""
         L = self.layout
-        pygame.draw.rect(self.screen, self.PANEL_BG, (self.GRID_W, 0, self.PANEL_RIGHT_W, self.SHOP_H + self.BENCH_H))
-        pygame.draw.line(self.screen, self.GRID, (self.GRID_W, 0), (self.GRID_W, self.SHOP_H + self.BENCH_H), 2)
+        rail = pygame.Rect(self.GRID_W, 0, self.PANEL_RIGHT_W, self.SHOP_H + self.BENCH_H)
+        self._hud_panel(rail, self.PANEL_BG, "CORE", accent=(80, 110, 150))
 
         st = L.stats_toggle_rect()
-        col_st = self.PANEL_BTN_SEL if self.game.inspector_mode == "stats" else self.PANEL_BTN
-        pygame.draw.rect(self.screen, col_st, st)
-        pygame.draw.rect(self.screen, self.TEXT, st, 1)
-        st_lbl = self.font_s.render("Stats", True, self.TEXT)
-        self.screen.blit(st_lbl, (st.centerx - st_lbl.get_width() // 2, st.centery - 6))
+        self._hud_chip(st, "Stats", on=self.game.inspector_mode == "stats")
+        hud = L.hud_toggle_rects()
+        self._hud_chip(hud["bars"], "HP", on=bool(HUD_CONFIG.get("enemy_health_bars", True)))
+        self._hud_chip(hud["names"], "Name", on=bool(HUD_CONFIG.get("enemy_names", True)))
+        self._hud_chip(hud["pops"], "DMG", on=bool(HUD_CONFIG.get("damage_numbers", True)))
 
         px = self.GRID_W + 14
         py = 18
@@ -626,10 +653,9 @@ class Renderer:
             py += 20
 
         play_rect, next_rect, auto_rect = L.panel_control_rects(show_spl=L.show_spl(self.game))
-        col_play = self.PANEL_BTN_SEL if self.game.paused else self.PANEL_BTN
-        pygame.draw.rect(self.screen, col_play, play_rect)
+        pygame.draw.rect(self.screen, self.PANEL_BTN, play_rect)
         pygame.draw.rect(self.screen, self.TEXT, play_rect, 1)
-        self.screen.blit(self.font_s.render("Play" if self.game.paused else "Pause", True, self.TEXT), (play_rect.x + 28, play_rect.y + 4))
+        self.screen.blit(self.font_s.render("Esc menu", True, self.TEXT), (play_rect.x + 18, play_rect.y + 4))
 
         pygame.draw.rect(self.screen, self.PANEL_BTN, next_rect)
         pygame.draw.rect(self.screen, self.TEXT, next_rect, 1)
@@ -743,8 +769,8 @@ class Renderer:
         content = L.inspector_content_rect()
         close_r = L.inspector_close_rect()
 
-        pygame.draw.rect(self.screen, (35, 35, 50), outer)
-        pygame.draw.rect(self.screen, self.TEXT, outer, 2)
+        self._hud_panel(outer, (28, 28, 40), accent=(80, 110, 150))
+        pygame.draw.rect(self.screen, (90, 95, 110), outer, 1)
 
         for name, tab in tabs.items():
             active = mode == name
@@ -963,12 +989,12 @@ class Renderer:
 
     def _draw_tile_preview(self):
         """Draw tile placement preview."""
-        if self.game.selected_map_tile is not None and self.game.map_tile_bench[self.game.selected_map_tile]:
+        if self.game.selected_map_tile is not None and self.game.loot_bag[self.game.selected_map_tile]:
             mx, my = pygame.mouse.get_pos()
             if my >= self.grid_y and mx < self.GRID_W:
                 gx, gy = self.screen_to_world(mx, my)
                 gx, gy = int(gx), int(gy)
-                tile_data = self.game.map_tile_bench[self.game.selected_map_tile]
+                tile_data = self.game.loot_bag[self.game.selected_map_tile]
 
                 rotated_grid = self.game._rotate_grid(tile_data["path_grid"], self.game.selected_tile_rotation)
                 placement_valid = self.game.can_place_tile(tile_data, gx, gy, self.game.selected_tile_rotation)
@@ -1054,14 +1080,13 @@ class Renderer:
             r = pygame.Rect(tx + 6 * self.zoom_level, ty + 6 * self.zoom_level,
                           (self.TILE * self.zoom_level) - 12, (self.TILE * self.zoom_level) - 12)
             pygame.draw.rect(self.screen, col, r)
+            blit_glyph(self.screen, t.base_type, r, pad=6)
 
             if self.game.selected_upgrade is not None:
-                from data.upgrades import UPGRADE_DEFS
-                upgrade_id = self.game.upgrade_bench[self.game.selected_upgrade]
-                if upgrade_id and len(t.upgrades) < t.UPGRADE_CAPACITY and upgrade_id not in t.upgrades:
-                    pygame.draw.rect(self.screen, (100, 255, 100), r, max(2, int(4 * self.zoom_level)))
-                else:
-                    pygame.draw.rect(self.screen, (255, 100, 100), r, max(2, int(4 * self.zoom_level)))
+                upgrade_id = self.game.loot_bag[self.game.selected_upgrade]
+                can = bool(upgrade_id) and self.game.economy.can_apply_upgrade(t, upgrade_id)
+                border = (100, 255, 100) if can else (255, 100, 100)
+                pygame.draw.rect(self.screen, border, r, max(2, int(4 * self.zoom_level)))
             else:
                 # Use merge type to determine border color
                 merge_type = t.get_merge_type()
@@ -1085,71 +1110,116 @@ class Renderer:
                 self.screen.blit(s, (cx-rad-2, cy-rad-2))
 
     def _draw_enemies(self):
-        """Draw enemies."""
+        """Draw enemies with optional nameplates / health bars."""
+        show_bars = bool(HUD_CONFIG.get("enemy_health_bars", True))
+        show_names = bool(HUD_CONFIG.get("enemy_names", True))
         for e in self.game.enemies:
             pos = e.get_position()
-            if pos:
-                ex, ey = pos
-                exx, eyy = self.world_to_screen(ex, ey)
-                c = (exx + 20 * self.zoom_level, eyy + 20 * self.zoom_level)
-                # Enemy visuals (full mode: black base with green accents)
-                if not getattr(self.game, 'minimal_mode', True):
-                    # Black base for all enemies
-                    base_color = (0, 0, 0)
-                    pygame.draw.circle(self.screen, base_color, c, max(5, int(13 * self.zoom_level)))
+            if not pos:
+                continue
+            ex, ey = pos
+            exx, eyy = self.world_to_screen(ex, ey)
+            c = (exx + 20 * self.zoom_level, eyy + 20 * self.zoom_level)
+            accent = self.enemy_accents.get(getattr(e, "enemy_type", None), (0, 180, 0))
+            if getattr(e, "is_egrem_spawned", False):
+                accent = (80, 255, 80)
+            radius = max(5, int(13 * self.zoom_level))
+            if not getattr(self.game, "minimal_mode", True):
+                pygame.draw.circle(self.screen, (0, 0, 0), c, radius)
+                pygame.draw.circle(self.screen, accent, c, radius, max(1, int(2 * self.zoom_level)))
+                accent_r = max(1, int(3 * self.zoom_level))
+                for ax, ay in (
+                    (c[0], c[1] - radius // 2),
+                    (c[0], c[1] + radius // 2),
+                    (c[0] - radius // 2, c[1]),
+                    (c[0] + radius // 2, c[1]),
+                ):
+                    pygame.draw.circle(self.screen, accent, (ax, ay), accent_r)
+            else:
+                pygame.draw.circle(self.screen, accent if e.is_egrem_spawned else self.ENEMY, c, radius)
 
-                    # Green accents (veins/eyes)
-                    accent_color = (0, 255, 0) if e.is_egrem_spawned else (0, 180, 0)
-                    radius = max(5, int(13 * self.zoom_level))
+            z = self.zoom_level
+            bar_w = max(12, int(36 * z))
+            bar_h = max(3, int(5 * z))
+            bar_x = int(c[0] - bar_w / 2)
+            bar_y = int(c[1] - radius - 10 * z)
+            if show_names:
+                label = getattr(e, "display_name", None) or getattr(e, "enemy_type", "?")
+                name = self.font_s.render(str(label)[:10], True, accent)
+                self.screen.blit(name, (int(c[0] - name.get_width() / 2), bar_y - 12))
+            if show_bars:
+                max_hp = max(1, getattr(e, "max_health", 1))
+                ratio = max(0.0, min(1.0, e.health / max_hp))
+                pygame.draw.rect(self.screen, (12, 12, 16), (bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2))
+                pygame.draw.rect(self.screen, self.HP_BG, (bar_x, bar_y, bar_w, bar_h))
+                fill = (220, 70, 70) if ratio < 0.3 else (220, 180, 60) if ratio < 0.6 else self.HP_FILL
+                pygame.draw.rect(self.screen, fill, (bar_x, bar_y, int(bar_w * ratio), bar_h))
 
-                    # Draw accent details - small circles at cardinal points for "veins"
-                    accent_positions = [
-                        (c[0], c[1] - radius//2),  # Top (like eyes)
-                        (c[0], c[1] + radius//2),  # Bottom
-                        (c[0] - radius//2, c[1]),  # Left
-                        (c[0] + radius//2, c[1]),  # Right
-                    ]
-                    accent_radius = max(1, int(3 * self.zoom_level))
-                    for ax, ay in accent_positions:
-                        pygame.draw.circle(self.screen, accent_color, (ax, ay), accent_radius)
-                else:
-                    # Original enemy visuals
-                    enemy_color = (60, 220, 60) if e.is_egrem_spawned else self.ENEMY
-                    pygame.draw.circle(self.screen, enemy_color, c, max(5, int(13 * self.zoom_level)))
-                ratio = max(0, e.health / e.max_health)
-                bar_width = max(10, int(40 * self.zoom_level))
-                bar_height = max(2, int(6 * self.zoom_level))
-                pygame.draw.rect(self.screen, self.HP_BG, (c[0]-20*self.zoom_level, c[1]-30*self.zoom_level, bar_width, bar_height))
-                pygame.draw.rect(self.screen, self.HP_FILL, (c[0]-20*self.zoom_level, c[1]-30*self.zoom_level, bar_width*ratio, bar_height))
+    def _flush_combat_pops(self):
+        """Turn this-frame combat hits into floating numbers (merged per tile)."""
+        pops = getattr(self.game, "combat_pops", None)
+        if not pops:
+            return
+        batch = list(pops)
+        pops.clear()
+        if not HUD_CONFIG.get("damage_numbers", True):
+            return
+        merged = {}
+        for pop in batch:
+            key = (pop.get("x"), pop.get("y"))
+            slot = merged.setdefault(key, {"dmg": 0, "kill": False})
+            slot["dmg"] += int(pop.get("dmg", 0) or 0)
+            slot["kill"] = slot["kill"] or bool(pop.get("kill"))
+        z = self.zoom_level
+        for (gx, gy), slot in merged.items():
+            if slot["dmg"] <= 0:
+                continue
+            sx, sy = self.world_to_screen(gx, gy)
+            pos = (sx + 12 * z, sy - 8 * z)
+            self.swarm_fx.add_damage_number(pos, slot["dmg"], kill=slot["kill"])
 
     def _draw_wave_bonus(self, frame):
-        """Draw wave bonus / reward toast text."""
-        text = None
+        """Draw wave-clear and loot toasts (stacked, not mutually exclusive)."""
+        lines = []
+        if frame < getattr(self.game, "wave_bonus_show_until", 0) and getattr(self.game, "wave_bonus_text", ""):
+            lines.append(self.game.wave_bonus_text)
         if getattr(self.game, "reward_toast_until", 0) > frame and getattr(self.game, "reward_toast_text", ""):
-            text = self.game.reward_toast_text
-        elif frame < self.game.wave_bonus_show_until:
-            text = self.game.wave_bonus_text
-        if not text:
+            lines.append(self.game.reward_toast_text)
+        if not lines:
             return
-        txt = self.font.render(text, True, (100, 255, 140))
-        tw, th = txt.get_size()
-        pygame.draw.rect(self.screen, (0, 0, 0, 180), (self.WIDTH // 2 - tw // 2 - 20, 60, tw + 40, th + 20))
-        self.screen.blit(txt, (self.WIDTH // 2 - tw // 2, 70))
+        y = 58
+        for i, text in enumerate(lines):
+            color = (100, 255, 140) if i == 0 else (200, 180, 255)
+            txt = self.font.render(text, True, color)
+            tw, th = txt.get_size()
+            box = pygame.Rect(self.WIDTH // 2 - tw // 2 - 16, y - 6, tw + 32, th + 12)
+            pygame.draw.rect(self.screen, (8, 10, 16), box)
+            pygame.draw.rect(self.screen, (60, 80, 70), box, 1)
+            self.screen.blit(txt, (box.x + 16, y))
+            y += th + 14
 
     def _draw_game_over(self):
-        """Draw game over screen."""
+        """Draw run-over overlay (defeat / victory / forfeit)."""
         if not self.game.game_over:
             return
+
+        reason = getattr(self.game, "run_over_reason", None) or "defeat"
+        titles = {
+            "defeat": ("RUN FAILED", (255, 80, 80)),
+            "victory": ("SORT COMPLETE", (100, 255, 140)),
+            "forfeit": ("RUN FORFEIT", (255, 180, 80)),
+        }
+        title, color = titles.get(reason, titles["defeat"])
 
         o = pygame.Surface((self.WIDTH, self.HEIGHT))
         o.set_alpha(180)
         o.fill((0, 0, 0))
         self.screen.blit(o, (0, 0))
-        txt = self.font_over.render("GAME OVER", True, (255, 80, 80))
+        txt = self.font_over.render(title, True, color)
         self.screen.blit(txt, txt.get_rect(center=(self.WIDTH//2, self.HEIGHT//2 - 60)))
         s = self.font.render(f"Wave {self.game.final_wave}   Gold {self.game.final_gold}", True, self.TEXT)
         self.screen.blit(s, s.get_rect(center=(self.WIDTH//2, self.HEIGHT//2)))
-        r = self.font.render("Click anywhere to restart", True, self.TEXT)
+        r = self.font.render("Click anywhere to return to run select", True, self.TEXT)
         self.screen.blit(r, r.get_rect(center=(self.WIDTH//2, self.HEIGHT//2 + 60)))
 
     def _draw_camera_info(self):

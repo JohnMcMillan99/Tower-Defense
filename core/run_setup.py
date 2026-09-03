@@ -191,3 +191,46 @@ class RunSetup:
         mods = rng.sample(mods_pool, n) if n else []
         hidden = rng.random() < hidden_chance
         return cls(seed=seed, directive_hidden=hidden, modifier_ids=mods, meta=meta)
+
+
+DIRECTIVE_BLURBS = {
+    "PowerSort": "Weak first. The real pressure is late.",
+    "DescendingSpike": "Hard open. Survive the spike.",
+    "DroneBubble": "Local shuffles. Adjacent waves rhyme.",
+    "AssimilationMerge": "Pure-type runs, then mixed mash.",
+    "PivotPartition": "Tease, elite pivot, then the high side.",
+    "PriorityExtract": "Rhythmic clumps, then a pop.",
+    "ResistanceBucket": "Waves share a type tag.",
+}
+
+
+class SortOffer:
+    """Three directive picks + shared modifiers. Confirm builds a RunSetup."""
+
+    def __init__(self, seed: int, directives: Sequence[str], selected: int = 0, modifier_ids: Optional[Sequence[str]] = None):
+        self.seed = int(seed)
+        self.directives = list(directives)
+        self.selected = max(0, min(int(selected), max(0, len(self.directives) - 1)))
+        self.modifier_ids = [m for m in (modifier_ids or []) if m in MODIFIER_DEFS]
+
+    @classmethod
+    def roll(cls, seed: Optional[int] = None, meta: Optional[dict] = None) -> "SortOffer":
+        meta = meta or META_UNLOCK_STUBS
+        seed = int(seed if seed is not None else random.randint(0, 2**31 - 1))
+        rng = random.Random(seed ^ 0x50B7)
+        names = list(unlocked_directives(meta))
+        rng.shuffle(names)
+        picks = names[:3] if len(names) >= 3 else names
+        mods_pool = unlocked_modifiers(meta)
+        n = rng.randint(0, min(2, len(mods_pool))) if mods_pool else 0
+        mods = rng.sample(mods_pool, n) if n else []
+        return cls(seed=seed, directives=picks, selected=0, modifier_ids=mods)
+
+    def to_run_setup(self) -> RunSetup:
+        name = self.directives[self.selected] if self.directives else "PowerSort"
+        return RunSetup(
+            seed=self.seed,
+            directive_name=name,
+            directive_hidden=False,
+            modifier_ids=self.modifier_ids,
+        )

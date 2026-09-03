@@ -2,6 +2,7 @@
 from core.run_setup import (
     MODIFIER_DEFS,
     RunSetup,
+    SortOffer,
     apply_modifiers_to_size,
     build_modified_pool,
     pick_directive,
@@ -82,3 +83,31 @@ def test_random_offer_deterministic():
 def test_unlocked_directives_nonempty():
     assert "PowerSort" in unlocked_directives()
     assert set(MODIFIER_DEFS.keys())
+
+
+def test_sort_offer_deterministic():
+    a = SortOffer.roll(seed=42)
+    b = SortOffer.roll(seed=42)
+    assert a.directives == b.directives
+    assert a.modifier_ids == b.modifier_ids
+    assert len(a.directives) == 3
+
+
+def test_sort_offer_to_run_setup_uses_selected():
+    offer = SortOffer.roll(seed=7)
+    offer.selected = 1
+    setup = offer.to_run_setup()
+    assert setup.directive_name == offer.directives[1]
+    assert setup.directive_hidden is False
+    assert setup.modifier_ids == offer.modifier_ids
+    assert setup.seed == offer.seed
+
+
+def test_game_honors_passed_run_setup(monkeypatch):
+    monkeypatch.setitem(SORT_CONFIG, "force_directive", "PowerSort")
+    monkeypatch.setitem(SORT_CONFIG, "force_modifiers", ["thin_signal"])
+    setup = RunSetup(seed=5, directive_name="DroneBubble", directive_hidden=False, modifier_ids=["dense_swarm"])
+    g = Game(minimal_mode=True, run_setup=setup)
+    assert g.run_setup.directive_name == "DroneBubble"
+    assert "dense_swarm" in g.run_setup.modifier_ids
+    assert "thin_signal" not in g.run_setup.modifier_ids

@@ -13,8 +13,6 @@ def _make_game():
     game.bench = [None] * int(BENCH_CONFIG.get("tower_slots", 5))
     bag = [None] * int(LOOT_CONFIG.get("bag_slots", 4))
     game.loot_bag = bag
-    game.map_tile_bench = bag
-    game.upgrade_bench = bag
     game.gold = 100
     game.reroll_cost = int(ECONOMY_CONFIG.get("reroll_cost", 3))
     game.minimal_mode = True
@@ -25,8 +23,6 @@ def _make_game():
     game.wave_bonus_show_until = 0
     game.selected_tower = None
     game.selected_loot = None
-    game.selected_map_tile = None
-    game.selected_upgrade = None
     game.selected_tile_rotation = 0
     game.merge_tower_1 = None
     game.merge_tower_2 = None
@@ -125,8 +121,8 @@ def test_tower_bench_is_five_slots():
     g = Game(minimal_mode=True)
     assert len(g.bench) == 5
     assert len(g.loot_bag) == int(LOOT_CONFIG.get("bag_slots", 4))
-    assert g.map_tile_bench is g.loot_bag
-    assert g.upgrade_bench is g.loot_bag
+    assert g.selected_map_tile is None
+    assert g.selected_upgrade is None
     assert g.gold == int(ECONOMY_CONFIG.get("starting_gold", 25))
 
 

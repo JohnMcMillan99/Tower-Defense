@@ -143,6 +143,14 @@ class UILayout:
     def stats_toggle_rect(self):
         return pygame.Rect(self.GRID_W + 116, 16, 58, 20)
 
+    def hud_toggle_rects(self):
+        """HP / name chips under Stats (right edge of the rail)."""
+        return {
+            "bars": pygame.Rect(self.GRID_W + 116, 38, 58, 20),
+            "names": pygame.Rect(self.GRID_W + 116, 60, 58, 20),
+            "pops": pygame.Rect(self.GRID_W + 116, 82, 58, 20),
+        }
+
     def panel_control_rects(self, show_spl=False):
         """Play / Next Wave / Auto — must match _draw_right_panel stacking."""
         px = self.GRID_W + 14

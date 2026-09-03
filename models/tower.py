@@ -213,7 +213,8 @@ class Tower:
             u = UPGRADE_DEFS.get(uid, {})
             if any(s in TOWER_TRAITS.get(self.base_type, []) for s in u.get("synergizes_with", [])):
                 self.dmg = int(self.dmg * 1.10)
-                self.range += 0.2
+                self.range += 1
+        self.range = max(0, int(self.range))
 
     def get_merge_tier(self):
         return self.merge_generation
@@ -291,6 +292,18 @@ class Tower:
         killed = enemy.take_damage(raw_dmg, attacker_tags)
         dealt = hp_before - max(0, enemy.health)
         self.damage_dealt_this_wave += dealt
+        if dealt > 0:
+            game = getattr(self, "game", None)
+            pops = getattr(game, "combat_pops", None) if game is not None else None
+            if pops is not None:
+                pos = enemy.get_position() if hasattr(enemy, "get_position") else None
+                if pos:
+                    pops.append({
+                        "x": pos[0],
+                        "y": pos[1],
+                        "dmg": int(dealt),
+                        "kill": bool(killed),
+                    })
         if killed:
             self.kills_this_wave += 1
         return killed

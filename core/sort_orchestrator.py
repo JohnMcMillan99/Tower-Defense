@@ -28,9 +28,15 @@ def unlocked_types_for_wave(wave_num: int) -> List[str]:
 
 
 def default_wave_size(wave_num: int, web_mode: bool = False) -> int:
+    from config import WAVE_CONFIG
     if web_mode:
-        return max(3, (5 + wave_num) // 2)
-    return 5 + wave_num * 2
+        web_min = int(WAVE_CONFIG.get("web_min", 3))
+        web_base = int(WAVE_CONFIG.get("web_base", 5))
+        div = max(1, int(WAVE_CONFIG.get("web_divisor", 2)))
+        return max(web_min, (web_base + wave_num) // div)
+    base = int(WAVE_CONFIG.get("base_size", 5))
+    per = int(WAVE_CONFIG.get("per_wave", 2))
+    return base + wave_num * per
 
 
 class SortOrchestrator:

@@ -11,3 +11,6 @@ __pycache__/
 logs/
 debug.log
 debug-*.log
+data/dev_presets.json
+saves/profiles.json
+saves/*.tmp
