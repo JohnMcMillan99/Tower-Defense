@@ -1,32 +1,43 @@
 import pygame
-from config import log_debug
+from config import log_debug, play_rules, HUD_CONFIG
 
 
 class EventHandler:
-    def __init__(self, game, renderer):
+    def __init__(self, game, renderer, app=None):
         self.game = game
         self.renderer = renderer
+        self.app = app
         self.running = True
 
+    @property
+    def layout(self):
+        return self.renderer.layout
+
+    def _rules(self):
+        pause = bool(self.app.pause_open) if self.app else (getattr(self.game, "paused", False) is True)
+        return play_rules(self.game, pause_open=pause)
+
     def handle_events(self, frame):
-        """Handle all Pygame events."""
+        """Handle all Pygame events (standalone / tests). App uses process_event."""
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            elif event.type == pygame.KEYDOWN:
-                self._handle_keydown(event)
-            elif event.type == pygame.MOUSEWHEEL:
-                self._handle_mousewheel(event)
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                self._handle_mousebuttondown(event, frame)
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self._handle_mousebuttonup(event)
-            elif event.type == pygame.MOUSEMOTION:
-                self._handle_mousemotion(event)
+            self.process_event(event, frame)
+
+    def process_event(self, event, frame):
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.KEYDOWN:
+            self._handle_keydown(event)
+        elif event.type == pygame.MOUSEWHEEL:
+            self._handle_mousewheel(event)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            self._handle_mousebuttondown(event, frame)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            self._handle_mousebuttonup(event)
+        elif event.type == pygame.MOUSEMOTION:
+            self._handle_mousemotion(event)
 
     def _handle_keydown(self, event):
         """Handle key press events."""
-        # Camera controls
         if event.key == pygame.K_LEFT:
             self.renderer.camera_x += 50
         elif event.key == pygame.K_RIGHT:
@@ -39,42 +50,41 @@ class EventHandler:
             self.renderer.camera_x = 0
             self.renderer.camera_y = 0
             self.renderer.zoom_level = 1.0
-        elif pygame.K_1 <= event.key <= pygame.K_3:
-            # Upgrade bench shortcuts
+        elif event.key in (pygame.K_a, pygame.K_d):
+            if self.game.selected_map_tile is not None and self._rules().place_tiles:
+                delta = 1 if event.key == pygame.K_d else -1
+                self.game.selected_tile_rotation = (self.game.selected_tile_rotation + delta) % 4
+        elif pygame.K_1 <= event.key <= pygame.K_4:
+            if not self._rules().place_tiles and not self._rules().shop:
+                return
             slot_idx = event.key - pygame.K_1
-            if self.game.upgrade_bench[slot_idx] is not None:
-                self.game.selected_upgrade = slot_idx if self.game.selected_upgrade != slot_idx else None
+            bag = getattr(self.game, "loot_bag", None) or []
+            if slot_idx < len(bag) and bag[slot_idx] is not None:
+                self.game.economy.select_loot(slot_idx)
 
     def _handle_mousewheel(self, event):
-        """Handle mouse wheel zoom (or tower stats scroll over right panel)."""
+        """Handle mouse wheel zoom (or inspector stats scroll)."""
         mx, my = pygame.mouse.get_pos()
-        if getattr(self.game, "tower_stats_open", False) and mx >= self.renderer.GRID_W:
+        L = self.layout
+        if self.game.inspector_mode == "stats" and L.inspector_rect().collidepoint(mx, my):
             max_s = self.renderer.tower_stats_max_scroll()
-            self.game.tower_stats_scroll = max(
-                0, min(max_s, self.game.tower_stats_scroll - event.y * 18)
+            self.game.inspector_scroll = max(
+                0, min(max_s, self.game.inspector_scroll - event.y * 18)
             )
             return
 
-        old_zoom = self.renderer.zoom_level
         self.renderer.zoom_level = max(0.5, min(2.0, self.renderer.zoom_level + event.y * 0.1))
-
-        # Zoom towards mouse cursor
-        if my >= self.renderer.grid_y and mx < self.renderer.GRID_W:
+        if my >= L.grid_y and mx < L.GRID_W:
             wx, wy = self.renderer.screen_to_world(mx, my)
             self.renderer.camera_x = mx - (wx * self.renderer.TILE * self.renderer.zoom_level)
-            self.renderer.camera_y = my - self.renderer.grid_y - (wy * self.renderer.TILE * self.renderer.zoom_level)
+            self.renderer.camera_y = my - L.grid_y - (wy * self.renderer.TILE * self.renderer.zoom_level)
 
     def _handle_mousebuttondown(self, event, frame):
-        """Handle mouse button down events."""
         mx, my = event.pos
-
-        # Right click - rotate selected tile
         if event.button == 3:
-            if self.game.selected_map_tile is not None:
+            if self.game.selected_map_tile is not None and self._rules().place_tiles:
                 self.game.selected_tile_rotation = (self.game.selected_tile_rotation + 1) % 4
             return
-
-        # Left click
         if event.button == 1:
             self._handle_left_click(mx, my, frame)
 
@@ -93,263 +103,186 @@ class EventHandler:
         self.renderer.zoom_level = 1.0
 
     def _handle_left_click(self, mx, my, frame):
-        """Handle left mouse button clicks."""
         log_debug("Left click detected", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_left_click")
+        L = self.layout
 
         if self.game.game_over:
-            self.restart_game()
+            if self.app:
+                self.app.return_to_run_select()
+            else:
+                self.restart_game()
             return
 
-        # Upgrade dialog (when open)
-        if self.game.upgrade_dialog_tower is not None:
-            self._handle_upgrade_dialog_click(mx, my)
+        # Inspector panel (tabs / content / close) before other right-column handlers
+        if self.game.inspector_mode and L.inspector_rect().collidepoint(mx, my):
+            self._handle_inspector_click(mx, my)
             return
 
-        # Upgrade bench (bottom-right) before right-panel early-return
-        upgrade_bench_y = self.renderer.HEIGHT - 100
-        if mx >= self.renderer.GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
-            self._handle_upgrade_bench_click(mx, my)
+        if L.upgrade_bench_region().collidepoint(mx, my):
             return
 
-        # Right panel: Play/Pause, Next Wave, Auto, Stats
-        if mx >= self.renderer.GRID_W:
+        if mx >= L.GRID_W:
             self._handle_right_panel_click(mx, my, frame)
             return
 
-        # Shop
-        if my < self.renderer.SHOP_H:
-            self._handle_shop_click(mx, my)
+        # Top row: shop (left 5/8) | map tiles (right 3/8)
+        if my < L.SHOP_H:
+            if L.map_column_region().collidepoint(mx, my):
+                self._handle_map_bench_click(mx, my)
+            else:
+                self._handle_shop_click(mx, my)
             return
 
-        # Bench
-        if self.renderer.SHOP_H <= my < self.renderer.SHOP_H + self.renderer.BENCH_H:
+        if L.SHOP_H <= my < L.SHOP_H + L.BENCH_H:
             self._handle_bench_click(mx, my, frame)
             return
 
-        # Map Tile Bench - only when in bench y-range and x-range
-        if (my >= self.renderer.map_bench_y and my < self.renderer.map_bench_y + 80
-                and mx >= self.renderer.map_bench_x and mx < self.renderer.map_bench_x + 3 * 80):
-            self._handle_map_bench_click(mx, my)
-            return
-
-        # Grid
-        if my >= self.renderer.grid_y and mx < self.renderer.GRID_W:
+        if my >= L.grid_y and mx < L.GRID_W:
             self._handle_grid_click(mx, my, frame)
 
-    def _handle_upgrade_dialog_click(self, mx, my):
-        """Handle clicks in the upgrade dialog."""
-        t = self.game.upgrade_dialog_tower
-        base_height = 280
-        upgrade_height = 20 + (len(t.upgrades) * 16) if t.upgrades else 0
-        dialog_height = base_height + upgrade_height
-        dialog_rect = pygame.Rect(self.renderer.GRID_W + 8, 162, 164, dialog_height)
+    def _handle_inspector_click(self, mx, my):
+        L = self.layout
+        tabs = L.inspector_tab_rects()
+        for name, tab in tabs.items():
+            if tab.collidepoint(mx, my):
+                if name == "stats":
+                    self.game.open_inspector("stats")
+                elif name == "tower":
+                    self.game.open_inspector("tower", self.game.inspector_tower)
+                elif name == "enemy":
+                    self.game.open_inspector("enemy", self.game.inspector_enemy)
+                return
 
-        if dialog_rect.collidepoint(mx, my):
-            # Direction selector for Track towers
-            if t.fire_type == "Track":
-                for d in range(4):
-                    dx = self.renderer.GRID_W + 14 + d * 35
-                    dy = 318
-                    r = pygame.Rect(dx, dy, 30, 20)
+        if L.inspector_close_rect().collidepoint(mx, my):
+            self.game.close_inspector()
+            return
+
+        if self.game.inspector_mode == "tower" and self.game.inspector_tower is not None:
+            t = self.game.inspector_tower
+            if t.fire_type in ("Track", "DirectionalBeam"):
+                for d, r in enumerate(L.inspector_direction_rects()):
                     if r.collidepoint(mx, my):
                         t.track_direction = d
                         return
-
-            # Sell and Close buttons
-            button_y = 266 + upgrade_height
-            sell_r = pygame.Rect(self.renderer.GRID_W + 10, button_y, 75, 24)
-            close_r = pygame.Rect(self.renderer.GRID_W + 95, button_y, 75, 24)
+            sell_r, _ = L.inspector_sell_close_rects()
             if sell_r.collidepoint(mx, my):
                 self.game.economy.sell_tower_from_grid(t.x, t.y)
-                self.game.upgrade_dialog_tower = None
-            elif close_r.collidepoint(mx, my):
-                self.game.upgrade_dialog_tower = None
-        else:
-            # Clicked outside dialog
-            self.game.upgrade_dialog_tower = None
-
-    def _handle_right_panel_click(self, mx, my, frame):
-        """Handle clicks in the right panel."""
-        log_debug("Right panel click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_right_panel_click")
-
-        if self.renderer.stats_toggle_rect().collidepoint(mx, my):
-            self.game.tower_stats_open = not self.game.tower_stats_open
-            if self.game.tower_stats_open:
-                self.game.upgrade_dialog_tower = None
-                self.game.selected_enemy = None
-                self.game.tower_stats_scroll = 0
-            return
-
-        if self.game.tower_stats_open and self.renderer.tower_stats_close_rect().collidepoint(mx, my):
-            self.game.tower_stats_open = False
-            return
-
-        # Calculate button positions to match the drawing code
-        px = self.renderer.GRID_W + 14
-        py = 18  # Starting Y position (same as drawing code)
-
-        # Basic stats spacing (same as drawing)
-        py += 24  # Gold
-        py += 24  # Lives
-        py += 24  # Wave
-
-        # SPL/XP UI spacing (same as drawing)
-        if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'shop_power_level'):
-            py += 24  # SPL
-            py += 12 + 4 + 20  # XP bar + text
-
-        # Button spacing (same as drawing)
-        py += 8  # Spacing before buttons
-
-        # Play/Pause button
-        play_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Play button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
-        py += 32
-
-        # Next Wave button
-        next_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Next Wave button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
-        py += 32
-
-        # Auto toggle button
-        auto_rect = pygame.Rect(px, py, 100, 26)
-        log_debug("Auto button rect", {"x": px, "y": py, "w": 100, "h": 26}, location="events.py:_handle_right_panel_click")
-
-        if play_rect.collidepoint(mx, my):
-            log_debug("Play/Pause button clicked", location="events.py:_handle_right_panel_click")
-            self.game.paused = not self.game.paused
-        elif next_rect.collidepoint(mx, my):
-            log_debug("Next Wave button clicked", location="events.py:_handle_right_panel_click")
-            self.game.wave_manager.start_next_wave(frame)
-        elif auto_rect.collidepoint(mx, my):
-            log_debug("Auto button clicked", location="events.py:_handle_right_panel_click")
-            self.game.auto_mode = not self.game.auto_mode
-        else:
-            log_debug("No button clicked", location="events.py:_handle_right_panel_click")
-
-    def _handle_shop_click(self, mx, my):
-        """Handle clicks in the towers-only shop."""
-        log_debug("Shop click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_shop_click")
-
-        for i in range(5):
-            x = 15 + i * 80
-            y = 15
-            if x <= mx <= x + 70 and y <= my <= y + 100:
-                self.game.economy.move_to_bench(i)
+                self.game.close_inspector()
                 return
 
-        # Reroll (refreshes all 5 tower offers)
-        rx = 15 + 400
-        ry = 40
-        if rx <= mx <= rx + 35 and ry <= my <= ry + 35:
+    def _handle_right_panel_click(self, mx, my, frame):
+        L = self.layout
+        if L.stats_toggle_rect().collidepoint(mx, my):
+            if self.game.inspector_mode == "stats":
+                self.game.close_inspector()
+            else:
+                self.game.open_inspector("stats")
+            return
+        hud = L.hud_toggle_rects()
+        if hud["bars"].collidepoint(mx, my):
+            HUD_CONFIG["enemy_health_bars"] = not bool(HUD_CONFIG.get("enemy_health_bars", True))
+            return
+        if hud["names"].collidepoint(mx, my):
+            HUD_CONFIG["enemy_names"] = not bool(HUD_CONFIG.get("enemy_names", True))
+            return
+        if hud.get("pops") and hud["pops"].collidepoint(mx, my):
+            HUD_CONFIG["damage_numbers"] = not bool(HUD_CONFIG.get("damage_numbers", True))
+            return
+
+        play, next_wave, auto = L.panel_control_rects(show_spl=L.show_spl(self.game))
+        if play.collidepoint(mx, my):
+            return  # Esc opens PauseMenu; this is not a build-pause
+        elif next_wave.collidepoint(mx, my):
+            if self._rules().next_wave:
+                self.game.wave_manager.start_next_wave(frame)
+        elif auto.collidepoint(mx, my):
+            self.game.auto_mode = not self.game.auto_mode
+
+    def _handle_shop_click(self, mx, my):
+        if not self._rules().shop:
+            return
+        L = self.layout
+        for i in range(5):
+            if L.shop_card_rect(i).collidepoint(mx, my):
+                self.game.economy.move_to_bench(i)
+                return
+        if L.reroll_rect().collidepoint(mx, my):
             self.game.economy.reroll_shop()
 
     def _handle_bench_click(self, mx, my, frame):
-        """Handle clicks in the bench."""
-        # Merge/egrem label click first (when active)
+        if not self._rules().merge and not self._rules().place_towers:
+            return
+        L = self.layout
         if self.game.merge_preview or self.game.egrem_preview:
             idx1, idx2 = self.game.merge_tower_1, self.game.merge_tower_2
             if idx1 is not None and idx2 is not None:
-                cx1 = 45 + min(idx1, idx2) * 68
-                cx2 = 45 + max(idx1, idx2) * 68
-                mid_x = (cx1 + cx2) // 2
-                mid_y = self.renderer.SHOP_H + 60
-
                 if self.game.merge_preview:
-                    merge_txt = self.renderer.font_merge.render("Merge", True, (0, 0, 0))
-                    merge_rect = merge_txt.get_rect(center=(mid_x, mid_y))
-                    merge_rect.inflate_ip(18, 13)
+                    merge_rect = L.merge_action_rect(idx1, idx2, "Merge", self.renderer.font_merge)
                     if merge_rect.collidepoint(mx, my):
                         self.game.economy.confirm_merge()
                         return
                 elif self.game.egrem_preview:
-                    egrem_txt = self.renderer.font_merge.render("egrem", True, (0, 0, 0))
-                    egrem_rect = egrem_txt.get_rect(center=(mid_x, mid_y))
-                    egrem_rect.inflate_ip(18, 13)
+                    egrem_rect = L.merge_action_rect(idx1, idx2, "egrem", self.renderer.font_merge)
                     if egrem_rect.collidepoint(mx, my):
                         self.game.economy._complete_egrem()
                         return
 
-        # Bench card clicks
         clicked_on_bench_card = False
-        for i in range(10):
-            x = 15 + i * 68
-            y = self.renderer.SHOP_H + 15
-            if x <= mx <= x + 60 and y <= my <= y + 90:
+        for i in range(len(self.game.bench)):
+            if L.bench_card_rect(i).collidepoint(mx, my):
                 if self.game.bench[i] is not None:
                     clicked_on_bench_card = True
                     self.game.economy.select_for_merge(i, frame)
-                break  # Only one slot matched
+                break
 
-        # Clicked in bench area but not on a card -> cancel merge/incompatible
-        if not clicked_on_bench_card and (self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None):
+        if not clicked_on_bench_card and (
+            self.game.merge_preview or self.game.egrem_preview
+            or self.game.incompatible_preview or self.game.merge_tower_1 is not None
+        ):
             self.game.economy.cancel_merge()
 
     def _handle_map_bench_click(self, mx, my):
-        """Handle clicks in the map tile bench."""
+        L = self.layout
+        bag = getattr(self.game, "loot_bag", None) or []
+        for i in range(len(bag)):
+            if L.loot_card_rect(i).collidepoint(mx, my):
+                if bag[i] is not None:
+                    self.game.economy.select_loot(i)
+                return
 
-        for i in range(3):
-            x = self.renderer.map_bench_x + i * 80
-            y = self.renderer.map_bench_y
-            if x <= mx <= x+70 and y <= my <= y+80:
-                if self.game.map_tile_bench[i] is not None:
-                    self.game.selected_map_tile = i
-                    self.game.selected_tile_rotation = 0
-                    return
-
-        # Rotate buttons (must match renderer._draw_rotate_button)
-        rot_x = self.renderer.map_bench_x + 2 * 80 + 10
-        rot_y = self.renderer.map_bench_y + 5
-        in_rotate_region = rot_y <= my <= rot_y + 26 and (rot_x <= mx <= rot_x + 26 or rot_x + 34 <= mx <= rot_x + 60)
-        if self.game.selected_map_tile is not None and in_rotate_region:
-            if rot_x <= mx <= rot_x + 26:
+        left_r, right_r = L.rotate_button_rects()
+        if self.game.selected_map_tile is not None:
+            if left_r.collidepoint(mx, my):
                 self.game.selected_tile_rotation = (self.game.selected_tile_rotation - 1) % 4
-            elif rot_x + 34 <= mx <= rot_x + 60:
+            elif right_r.collidepoint(mx, my):
                 self.game.selected_tile_rotation = (self.game.selected_tile_rotation + 1) % 4
 
     def _handle_upgrade_bench_click(self, mx, my):
-        """Handle clicks in the upgrade bench."""
-        log_debug("Upgrade bench click", {"mouse_x": mx, "mouse_y": my}, location="events.py:_handle_upgrade_bench_click")
-        # Calculate positions the same way as drawing code
-        upgrade_bench_x = self.renderer.GRID_W + 10
-        upgrade_bench_y = self.renderer.HEIGHT - 100
-        log_debug("Upgrade bench bounds", {"bench_x": upgrade_bench_x, "bench_y": upgrade_bench_y}, location="events.py:_handle_upgrade_bench_click")
-
-        for i in range(3):
-            x = upgrade_bench_x + i * 55
-            y = upgrade_bench_y
-            log_debug(f"Checking upgrade slot {i}", {"slot_x": x, "slot_y": y, "slot_w": 50, "slot_h": 80}, location="events.py:_handle_upgrade_bench_click")
-            if x <= mx <= x+50 and y <= my <= y+80:
-                log_debug(f"Upgrade slot {i} clicked", location="events.py:_handle_upgrade_bench_click")
-                self.game.selected_upgrade = i if self.game.selected_upgrade != i else None
-                return
-
-        log_debug("No upgrade slot clicked", location="events.py:_handle_upgrade_bench_click")
+        return
 
     def _handle_grid_click(self, mx, my, frame):
-        """Handle clicks on the game grid."""
+        L = self.layout
         gx, gy = self.renderer.screen_to_world(mx, my)
         gx, gy = int(gx), int(gy)
 
-        # Place map tile
         if self.game.selected_map_tile is not None:
-            tile_data = self.game.map_tile_bench[self.game.selected_map_tile]
-            if tile_data and self.game.can_place_tile(tile_data, gx, gy, self.game.selected_tile_rotation):
+            tile_data = self.game.loot_bag[self.game.selected_map_tile]
+            if (
+                tile_data
+                and isinstance(tile_data, dict)
+                and self._rules().place_tiles
+                and self.game.can_place_tile(tile_data, gx, gy, self.game.selected_tile_rotation)
+            ):
                 self.game.place_map_tile(tile_data, gx, gy, self.game.selected_tile_rotation)
-
-                # Check if expansion needed
                 tile_cells = self.game._get_tile_path_cells(tile_data, gx, gy, self.game.selected_tile_rotation)
                 if self.game.should_expand_map(tile_cells):
                     self.game.expand_grid(tile_cells)
                     self.renderer.update_dimensions()
-
-                # Remove tile from bench
-                self.game.map_tile_bench[self.game.selected_map_tile] = None
-                self.game.selected_map_tile = None
+                self.game.loot_bag[self.game.selected_map_tile] = None
+                self.game.economy.clear_loot_selection()
                 self.game.selected_tile_rotation = 0
             return
 
-        # Place tower from bench
         if (self.game.selected_tower is not None and
             self.game.merge_preview is None and
             not self.game.egrem_preview and
@@ -357,76 +290,59 @@ class EventHandler:
             self.game.economy.place_tower(gx, gy, self.game.selected_tower)
             return
 
-        # Clear merge/egrem/incompatible selections
         if self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None:
             self.game.economy.cancel_merge()
 
-        # Check for enemy selection
         enemy_selected = False
         if 0 <= gx < self.game.width and 0 <= gy < self.game.height:
             for e in self.game.enemy_grid[gy][gx]:
                 if e.alive:
-                    self.game.selected_enemy = e
-                    self.game.upgrade_dialog_tower = None
+                    self.game.open_inspector("enemy", e)
                     enemy_selected = True
                     break
 
         if not enemy_selected:
-            # Check for tower selection
             for t in self.game.towers:
                 if t.x == gx and t.y == gy:
                     if self.game.selected_upgrade is not None:
-                        upgrade_id = self.game.upgrade_bench[self.game.selected_upgrade]
+                        upgrade_id = self.game.loot_bag[self.game.selected_upgrade]
                         if self.game.economy.apply_upgrade_from_bench(t, upgrade_id, self.game.selected_upgrade):
-                            self.game.selected_upgrade = None
+                            self.game.economy.clear_loot_selection()
                     else:
-                        self.game.upgrade_dialog_tower = t
-                        self.game.upgrade_dialog_choices = self.game.economy.get_upgrade_choices(t)
-                        self.game.tower_stats_open = False
-                    self.game.selected_enemy = None
+                        self.game.open_inspector("tower", t)
                     return
-
-            # Empty grid click
-            self.game.selected_enemy = None
-            self.game.upgrade_dialog_tower = None
+            # Empty grid — leave inspector alone unless clicking away from panel intent
+            if self.game.inspector_mode in ("tower", "enemy"):
+                self.game.close_inspector()
 
     def _handle_mousebuttonup(self, event):
-        """Handle mouse button up events."""
-        if event.button == 2:  # Middle mouse button
+        L = self.layout
+        if event.button == 2:
             self.renderer.dragging = False
-
-        elif event.button == 3:  # Right click
-            # Cancel merge/egrem/incompatible
+        elif event.button == 3:
             if self.game.merge_preview or self.game.egrem_preview or self.game.incompatible_preview or self.game.merge_tower_1 is not None:
                 self.game.economy.cancel_merge()
                 return
 
-            # Sell from bench
             my = event.pos[1]
-            if self.renderer.SHOP_H <= my < self.renderer.SHOP_H + self.renderer.BENCH_H:
+            if L.SHOP_H <= my < L.SHOP_H + L.BENCH_H:
                 mx = event.pos[0]
-                for i in range(10):
-                    x = 15 + i * 68
-                    y = self.renderer.SHOP_H + 15
-                    if x <= mx <= x+60 and y <= my <= y+90:
+                for i in range(len(self.game.bench)):
+                    if L.bench_card_rect(i).collidepoint(mx, my):
                         self.game.economy.sell_from_bench(i)
                         return
 
-            # Deselect upgrade
             mx, my = event.pos
-            upgrade_bench_y = self.renderer.HEIGHT - 100
-            if mx >= self.renderer.GRID_W and my >= upgrade_bench_y and my < upgrade_bench_y + 80:
-                self.game.selected_upgrade = None
+            if L.map_column_region().collidepoint(mx, my):
+                self.game.economy.clear_loot_selection()
                 return
 
-            # Sell tower from grid
-            if my >= self.renderer.grid_y and mx < self.renderer.GRID_W:
+            if my >= L.grid_y and mx < L.GRID_W:
                 gx, gy = self.renderer.screen_to_world(mx, my)
                 gx, gy = int(gx), int(gy)
                 self.game.economy.sell_tower_from_grid(gx, gy)
 
     def _handle_mousemotion(self, event):
-        """Handle mouse motion events."""
         if self.renderer.dragging:
             dx = event.pos[0] - self.renderer.last_mouse_x
             dy = event.pos[1] - self.renderer.last_mouse_y

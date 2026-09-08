@@ -225,19 +225,13 @@ class DamageNumber:
         """Draw the damage number."""
         if self.lifetime <= 0:
             return
-
-        alpha = int(255 * (self.lifetime / self.max_lifetime))
-        color = (*self.color[:3], alpha)
-
-        # Render text (use built-in font in browser - SysFont not available)
-        font = pygame.font.Font(None, 16) if sys.platform == "emscripten" else pygame.font.SysFont('Arial', 16, bold=True)
-        text = font.render(str(self.value), True, color)
-
-        # Draw text with slight shadow for visibility
-        shadow_color = (0, 0, 0, alpha // 2)
-        shadow_text = font.render(str(self.value), True, shadow_color)
-
-        surface.blit(shadow_text, (self.pos[0] + 1, self.pos[1] + 1))
+        alpha = max(0, min(255, int(255 * (self.lifetime / self.max_lifetime))))
+        font = pygame.font.Font(None, 18) if sys.platform == "emscripten" else pygame.font.SysFont("consolas", 14, bold=True)
+        text = font.render(str(int(self.value)), True, self.color[:3])
+        shadow = font.render(str(int(self.value)), True, (0, 0, 0))
+        text.set_alpha(alpha)
+        shadow.set_alpha(alpha // 2)
+        surface.blit(shadow, (self.pos[0] + 1, self.pos[1] + 1))
         surface.blit(text, self.pos)
 
 class SwarmFXManager:
@@ -279,16 +273,14 @@ class SwarmFXManager:
         emitter = ParticleEmitter(pos, color, 15, 45, (30, 70))
         self.particle_emitters.append(emitter)
 
-    def add_damage_number(self, pos, damage):
-        """
-        Add floating damage number.
-
-        Args:
-            pos: (x, y) position to display damage
-            damage: Damage value to display
-        """
-        number = DamageNumber(pos, damage)
+    def add_damage_number(self, pos, damage, kill=False):
+        """Add floating damage number. Caps live count so Overwatch cannot flood the HUD."""
+        color = (255, 220, 80) if kill else (255, 120, 100)
+        number = DamageNumber(pos, int(damage), color=color)
         self.damage_numbers.append(number)
+        overflow = len(self.damage_numbers) - 48
+        if overflow > 0:
+            self.damage_numbers = self.damage_numbers[overflow:]
 
     def add_trace_glow(self, path_segment, intensity=0.8):
         """

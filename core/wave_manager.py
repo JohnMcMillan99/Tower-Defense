@@ -1,8 +1,14 @@
 import random
 from models.enemy import Enemy
 from models.assimilator import Assimilator
-from core.strategy_analyzer import StrategyAnalyzer
-from config import log_debug
+from core.strategy_analyzer import StrategyAnalyzer, tell_from_profile
+from core.sort_directives import combat_hooks_from_game, attach_combat_hooks
+from core.sort_orchestrator import unlocked_types_for_wave, default_wave_size
+from config import (
+    log_debug, REWARD_CONFIG, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG,
+    RUN_FLOW_CONFIG, ADAPTATION_CONFIG, LATCH_CONFIG,
+)
+from models.drone_data import DroneData
 
 
 class WaveManager:
@@ -21,15 +27,256 @@ class WaveManager:
             t.damage_dealt_this_wave = 0
             t.kills_this_wave = 0
 
-    def start_next_wave(self, frame=None):
+    @staticmethod
+    def unlocked_types_for_wave(wave_num):
+        """Enemy types eligible for a normal wave (shared by spawn + preview)."""
+        return unlocked_types_for_wave(wave_num)
+
+    def wave_size_for(self, wave_num):
+        return default_wave_size(wave_num, getattr(self.game, "web_mode", False))
+
+    def _orchestrator(self):
+        return getattr(self.game, "sort_orchestrator", None)
+
+    def _intel_tier(self, intel=None):
+        if intel is None:
+            intel = getattr(self.game, "intel", 0)
+        tiers = INTEL_CONFIG.get("tiers", [])
+        chosen = tiers[0] if tiers else {
+            "min": 0, "horizon": 1, "show_types": False, "show_percents": False, "label": "Contact",
+        }
+        for tier in tiers:
+            if intel >= tier.get("min", 0):
+                chosen = tier
+        return chosen, int(intel)
+
+    def _loot_kind_for_wave(self, wave_num):
+        """Loot granted when this wave is cleared (None / mini_boss / boss)."""
+        if wave_num <= 0:
+            return None
+        mini_iv = REWARD_CONFIG.get("mini_boss_wave_interval", 5)
+        boss_iv = REWARD_CONFIG.get("boss_wave_interval", 20)
+        if wave_num % boss_iv == 0:
+            return "boss"
+        if wave_num % mini_iv == 0:
+            return "mini_boss"
+        return None
+
+    def waves_until_loot(self, from_wave=None):
+        """Waves until next mini-boss / boss clear (0 = this wave grants loot)."""
+        wave = from_wave if from_wave is not None else self.game.round_num
+        mini_iv = REWARD_CONFIG.get("mini_boss_wave_interval", 5)
+        boss_iv = REWARD_CONFIG.get("boss_wave_interval", 20)
+
+        def until(interval):
+            rem = wave % interval
+            return 0 if rem == 0 else interval - rem
+
+        u_mini, u_boss = until(mini_iv), until(boss_iv)
+        if u_boss <= u_mini:
+            return {"waves": u_boss, "kind": "boss"}
+        return {"waves": u_mini, "kind": "mini_boss"}
+
+    def preview_upcoming(self, intel=None, waves=None):
+        """
+        Forecast upcoming waves for the Round Guide HUD.
+
+        Uses SortOrchestrator when enabled; falls back to unlock-weight stub.
+        Returns:
+          waves, loot, intel / tier, directive (name/display when known)
+        """
+        tier, intel_val = self._intel_tier(intel)
+        horizon = int(waves if waves is not None else tier.get("horizon", 1))
+        show_types = bool(tier.get("show_types", False))
+        show_percents = bool(tier.get("show_percents", False))
+        start = self.game.round_num
+        orch = self._orchestrator() if SORT_CONFIG.get("enabled", True) else None
+        orch_forecasts = orch.forecast(horizon) if orch else None
+        forecasts = []
+
+        # Orchestrator remaining[0] is the next *normal* slot; event waves skip a slot.
+        # Walk horizon wave numbers and only consume orch offsets for non-event waves.
+        orch_offset = 0
+        for offset in range(horizon):
+            wnum = start + offset
+            event = None
+            if hasattr(self.game, "data_loader") and self.game.data_loader:
+                event = self.game.data_loader.get_event_wave(wnum)
+
+            entry = {
+                "wave": wnum,
+                "relative": offset + 1,
+                "revealed": True,
+                "kind": "event" if event else "normal",
+                "event_name": (event or {}).get("name") if event else None,
+                "count": 0,
+                "composition": {},
+                "is_exact": False,
+                "loot": self._loot_kind_for_wave(wnum),
+                "show_types": show_types,
+                "show_percents": show_percents,
+            }
+
+            if event:
+                composition = event.get("composition", {}) or {}
+                entry["composition"] = {k: int(v) for k, v in composition.items()}
+                entry["count"] = sum(entry["composition"].values())
+                entry["is_exact"] = True
+                entry["confidence"] = 1.0
+                # Event waves still consume a plan slot (skip_wave_slot on spawn)
+                orch_offset += 1
+            elif orch_forecasts is not None and orch_offset < len(orch_forecasts):
+                fc = orch_forecasts[orch_offset]
+                orch_offset += 1
+                counts = fc.get("composition", {}) or {}
+                entry["count"] = int(fc.get("count", 0))
+                entry["is_exact"] = True
+                entry["confidence"] = self._forecast_confidence(intel_val, offset)
+                if show_types and counts and entry["count"] > 0:
+                    if show_percents:
+                        total = float(entry["count"])
+                        # Soften percents toward equal when confidence is low
+                        conf = entry["confidence"]
+                        equal = 100.0 / len(counts)
+                        entry["composition"] = {
+                            t: round(equal + conf * (100.0 * n / total - equal), 1)
+                            for t, n in counts.items()
+                        }
+                    else:
+                        entry["composition"] = {t: int(n) for t, n in counts.items()}
+                else:
+                    entry["composition"] = {}
+            else:
+                types = self.unlocked_types_for_wave(wnum)
+                size = self.wave_size_for(wnum)
+                entry["count"] = size
+                entry["confidence"] = self._forecast_confidence(intel_val, offset)
+                if show_types and types:
+                    pct = round(100.0 / len(types), 1)
+                    entry["composition"] = {t: pct for t in types}
+                    entry["is_exact"] = False
+                else:
+                    entry["composition"] = {}
+                    entry["is_exact"] = False
+
+            forecasts.append(entry)
+
+        conf = self._forecast_confidence(intel_val, 0)
+        bag = getattr(self.game, "loot_bag", None) or []
+        bag_filled = sum(1 for s in bag if s is not None)
+        bag_slots = len(bag)
+        bag_full = bag_slots > 0 and bag_filled >= bag_slots
+        loot_info = self.waves_until_loot(start)
+        result = {
+            "waves": forecasts,
+            "loot": loot_info,
+            "intel": intel_val,
+            "intel_max": int(INTEL_CONFIG.get("max_intel", 100)),
+            "tier": tier,
+            "tier_label": tier.get("label", "Contact"),
+            "confidence": conf,
+            "noise_injections": int(getattr(self.game, "noise_injections", 0)),
+            "bag_filled": bag_filled,
+            "bag_slots": bag_slots,
+            "bag_full": bag_full,
+            "loot_misses": int(getattr(self.game, "loot_misses", 0) or 0),
+            "last_loot_miss": getattr(self.game, "last_loot_miss", None),
+            "bag_pressure": bool(bag_full and loot_info and loot_info.get("waves", 99) <= 1),
+            "egrem_noise": int(getattr(self.game, "noise_injections", 0) or 0),
+            "last_egrem_noise": getattr(self.game, "last_egrem_noise", None),
+        }
+        if orch:
+            result["directive"] = orch.directive_name
+            result["directive_display"] = orch.directive_display
+            result["modifiers"] = list(getattr(self.game, "run_setup", None) and self.game.run_setup.modifier_ids or [])
+            setup = getattr(self.game, "run_setup", None)
+            hidden = bool(setup and setup.directive_hidden)
+            result["directive_hidden"] = hidden
+            # Player Compile is never hidden. Random/force-hidden waits for Matrix (75).
+            if intel_val >= 75 or not hidden:
+                from core.run_setup import DIRECTIVE_BLURBS
+                result["directive_hint"] = orch.directive_display
+                result["directive_blurb"] = DIRECTIVE_BLURBS.get(orch.directive_name, "")
+            else:
+                result["directive_hint"] = "???"
+                result["directive_blurb"] = "Encrypted until Matrix."
+            if setup and setup.modifier_ids:
+                from core.run_setup import MODIFIER_DEFS
+                result["modifier_labels"] = [
+                    MODIFIER_DEFS[m]["name"] for m in setup.modifier_ids if m in MODIFIER_DEFS
+                ]
+        if self.game.wave_active and self._strategy_profile:
+            profile = self._strategy_profile
+        else:
+            profile = attach_combat_hooks(
+                self.game, self.strategy_analyzer.analyze(self.game, force=True)
+            )
+        result["adaptation_tell"] = tell_from_profile(profile)
+        result["hybrid_exposure"] = float(profile.get("_hybrid_exposure", 0) or 0)
+        return result
+
+    def _forecast_confidence(self, intel_val, wave_offset=0):
+        """0–1 scout confidence from intel, horizon distance, and egrem noise."""
+        intel_w = float(INTEL_CONFIG.get("confidence_intel_weight", 0.7))
+        noise_pen = float(INTEL_CONFIG.get("confidence_noise_penalty", 0.08))
+        floor = float(INTEL_CONFIG.get("confidence_floor", 0.15))
+        intel_max = max(1, int(INTEL_CONFIG.get("max_intel", 100)))
+        base = intel_w * (intel_val / intel_max)
+        # Farther waves are fuzzier
+        base *= max(0.35, 1.0 - 0.18 * wave_offset)
+        noise = int(getattr(self.game, "noise_injections", 0))
+        conf = base - noise * noise_pen
+        return max(floor, min(1.0, conf))
+
+    def try_inject_egrem_noise(self):
+        """Egrem kill may reshape the next planned wave (count + type mix)."""
+        orch = self._orchestrator()
+        if not orch:
+            return 0
+        chance = float(INTEL_CONFIG.get("egrem_noise_chance", 0.45))
+        if random.random() >= chance:
+            return 0
+        lo = int(INTEL_CONFIG.get("egrem_noise_min", 1))
+        hi = int(INTEL_CONFIG.get("egrem_noise_max", 2))
+        n = random.randint(lo, max(lo, hi))
+        types = self.unlocked_types_for_wave(self.game.round_num)
+        drones = [
+            DroneData.from_type(random.choice(types), wave_num=self.game.round_num, noise=random.randint(-1, 3))
+            for _ in range(n)
+        ]
+        swaps = int(INTEL_CONFIG.get("egrem_reshape_swaps", 2))
+        before = [d.enemy_type for d in orch.peek_wave(0)]
+        orch.inject(drones, swaps=swaps)
+        after = [d.enemy_type for d in orch.peek_wave(0)]
+        self.game.noise_injections = int(getattr(self.game, "noise_injections", 0)) + 1
+        from collections import Counter
+        self.game.last_egrem_noise = {
+            "added": n,
+            "swaps": swaps,
+            "types": [d.enemy_type for d in drones],
+            "composition_changed": Counter(before) != Counter(after),
+        }
+        return n
+
+    def start_next_wave(self, frame=None, forced=False):
         if self.game.wave_active:
+            return
+        from config import play_rules
+        pause = getattr(self.game, "paused", False) is True
+        if not forced and not play_rules(self.game, pause_open=pause).next_wave:
             return
         self.game.wave_active = True
         f = frame if frame is not None else getattr(self.game, "current_frame", 0)
         self.game.wave_start_frame = f
 
-        self._strategy_profile = self.strategy_analyzer.analyze(self.game)
-        rt = self.game.data_loader.get_resistance_tables() if hasattr(self.game, 'data_loader') else {}
+        self._strategy_profile = attach_combat_hooks(
+            self.game, self.strategy_analyzer.analyze(self.game, force=True)
+        )
+        rt = dict(ADAPTATION_CONFIG)
+        tell = tell_from_profile(self._strategy_profile)
+        self.game.adaptation_tell = tell
+        if tell:
+            self.game.adaptation_toast_until = f + 360
 
         log_debug("wave_strategy_profile", {
             "wave": self.game.round_num,
@@ -50,9 +297,14 @@ class WaveManager:
         self.game.spawn_queue = []
 
         if event:
+            orch = self._orchestrator()
+            if orch:
+                orch.skip_wave_slot()
             self._spawn_event_wave(event, rt)
         else:
             self._spawn_normal_wave(rt)
+
+        self._apply_milestone_scale()
 
         for t in self.game.towers:
             if t.base_type == "Nanite Swarm":
@@ -71,16 +323,28 @@ class WaveManager:
                     self.game.spawn_queue.append(assim)
         self.game.spawn_timer = 0
 
+    def _spawn_from_drones(self, drones, rt):
+        """Materialize DroneData chunk into spawn_queue enemies."""
+        for d in drones:
+            enemy_type = getattr(d, "enemy_type", "Drone")
+            if enemy_type == "Assimilator":
+                enemy = Assimilator(self.game.path, self.game.round_num, web_mode=self.game.web_mode)
+                enemy.set_game_reference(self.game)
+            else:
+                enemy = Enemy(self.game.path, enemy_type, self.game.round_num, web_mode=self.game.web_mode)
+            enemy.adapt_to_profile(self._strategy_profile, rt)
+            self.game.spawn_queue.append(enemy)
+
     def _spawn_normal_wave(self, rt):
-        if self.game.web_mode:
-            wave_size = max(3, (5 + self.game.round_num) // 2)
-        else:
-            wave_size = 5 + self.game.round_num * 2
-        types = ["Drone"]
-        if self.game.round_num >= 3: types.append("Scout")
-        if self.game.round_num >= 5: types.append("Harvester")
-        if self.game.round_num >= 7: types.append("Adaptor")
-        if self.game.round_num >= 9: types.append("Assimilator")
+        orch = self._orchestrator() if SORT_CONFIG.get("enabled", True) else None
+        if orch:
+            drones = orch.next_wave()
+            if drones:
+                self._spawn_from_drones(drones, rt)
+                return
+            # Plan exhausted — fall through to legacy random fill
+        wave_size = self.wave_size_for(self.game.round_num)
+        types = self.unlocked_types_for_wave(self.game.round_num)
         for _ in range(wave_size):
             enemy_type = random.choice(types)
             if enemy_type == "Assimilator":
@@ -94,8 +358,10 @@ class WaveManager:
     def _spawn_event_wave(self, event, rt):
         """Build spawn_queue from an event wave definition."""
         composition = event.get("composition", {})
-        hp_mult = event.get("hp_mult", 1.0)
-        speed_mult = event.get("speed_mult", 1.0)
+        # Milestone waves take HP/speed from REWARD_CONFIG in _apply_milestone_scale.
+        milestone = self._loot_kind_for_wave(self.game.round_num)
+        hp_mult = 1.0 if milestone else event.get("hp_mult", 1.0)
+        speed_mult = 1.0 if milestone else event.get("speed_mult", 1.0)
 
         for enemy_type, count in composition.items():
             for _ in range(count):
@@ -112,8 +378,25 @@ class WaveManager:
 
         random.shuffle(self.game.spawn_queue)
 
+    def _apply_milestone_scale(self):
+        """HP/speed multipliers on mini-boss and boss wave numbers. 1.0 = no change."""
+        kind = self._loot_kind_for_wave(self.game.round_num)
+        if not kind:
+            return
+        hp = float(REWARD_CONFIG.get(f"{kind}_hp_mult", 1.0) or 1.0)
+        spd = float(REWARD_CONFIG.get(f"{kind}_speed_mult", 1.0) or 1.0)
+        if hp == 1.0 and spd == 1.0:
+            return
+        for e in self.game.spawn_queue:
+            e.max_health = max(1, int(e.max_health * hp))
+            e.health = e.max_health
+            e.speed_mult *= spd
+
     def update_wave(self, frame):
-        if not self.game.wave_active or self.game.paused:
+        if getattr(self.game, "paused", False) or getattr(self.game, "game_over", False):
+            return
+        if not self.game.wave_active:
+            self._maybe_auto_chain(frame)
             return
         self.game.spawn_timer += 1
         if self.game.spawn_queue and self.game.spawn_timer >= self.game.spawn_interval:
@@ -124,12 +407,15 @@ class WaveManager:
         for t in self.game.towers:
             t.update(self.game.enemies, frame, self.game)
 
-        # Apply auras
+        # Apply auras (int + cap: never walk a 99-range Overwatch diamond)
         for t in self.game.towers:
             if "resist_2" in t.upgrades:
-                for dy in range(-t.range, t.range + 1):
-                    for dx in range(-t.range, t.range + 1):
-                        if abs(dx) + abs(dy) > t.range:
+                aura_r = max(0, min(8, int(getattr(t, "range", 0) or 0)))
+                if aura_r < 1:
+                    continue
+                for dy in range(-aura_r, aura_r + 1):
+                    for dx in range(-aura_r, aura_r + 1):
+                        if abs(dx) + abs(dy) > aura_r:
                             continue
                         nx, ny = t.x + dx, t.y + dy
                         if 0 <= nx < len(self.game.enemy_grid[0]) and 0 <= ny < len(self.game.enemy_grid):
@@ -146,10 +432,11 @@ class WaveManager:
             if pos:
                 self.game.enemy_grid[pos[1]][pos[0]].append(e)
 
-        # Assimilator latch logic (Circuit Stronghold)
-        if hasattr(self.game, 'board') and self.game.board:
-            assim_data = self.game.data_loader.get_assimilator_data() or {}
-            base_chance = assim_data.get('chance_base', 0.4)
+        # Assimilator latch (adjacent towers today; hybrid walls never spawn in play)
+        if LATCH_CONFIG.get("enabled", True) and hasattr(self.game, 'board') and self.game.board:
+            base_chance = float(LATCH_CONFIG.get("chance_base", 0.4))
+            base_chance *= float(combat_hooks_from_game(self.game).get("latch_chance_mult", 1.0))
+            self.game.board.latch_scan_range = int(LATCH_CONFIG.get("scan_range", 5))
 
             for e in self.game.enemies[:]:
                 # Must be Assimilator subclass (plain Enemy with type "Assimilator" has no latch_to)
@@ -193,30 +480,46 @@ class WaveManager:
                 self.game.enemies.remove(e)
         for e in self.game.enemies[:]:
             if not e.alive:
-                gold = max(1, (3 + e.difficulty * 3) // 2)  # scaled back ~half
+                base = int(ECONOMY_CONFIG.get("kill_gold_base", 3))
+                per = int(ECONOMY_CONFIG.get("kill_gold_per_difficulty", 3))
+                raw = max(1, (base + e.difficulty * per) // 2)
+                gold = max(1, int(raw * ECONOMY_CONFIG.get("kill_gold_mult", 0.5)))
                 self.game.gold += gold
                 # Add XP for enemy kill (full mode only)
                 if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'xp'):
                     base_xp = e.TYPES[e.enemy_type].get("base_xp", 5)
                     self.game.xp += base_xp * e.difficulty
-                # Egrem-spawned kills can drop path tiles into the map-tile bench
+                # Egrem-spawned kills: path tiles + scout intel + pool noise
                 if getattr(e, "is_egrem_spawned", False):
                     self.game.economy.try_grant_egrem_tile_drop()
+                    if hasattr(self.game, "add_intel"):
+                        self.game.add_intel(INTEL_CONFIG.get("egrem_intel_gain", 8))
+                    self.try_inject_egrem_noise()
                 self.game.enemies.remove(e)
         if self.game.lives <= 0:
             self.game.game_over = True
+            self.game.run_over_reason = "defeat"
             self.game.final_wave = self.game.round_num
             self.game.final_gold = self.game.gold
             self.game.wave_active = False
+            cb = getattr(self.game, "on_run_over", None)
+            if callable(cb):
+                cb("defeat")
         if self.game.wave_active and not self.game.enemies and not self.game.spawn_queue:
             cleared_wave = self.game.round_num
-            bonus = (len(self.game.towers) * 3 + cleared_wave * 4) // 2   # scaled back ~half
+            per_t = int(ECONOMY_CONFIG.get("wave_bonus_per_tower", 3))
+            per_w = int(ECONOMY_CONFIG.get("wave_bonus_per_wave", 4))
+            raw_bonus = (len(self.game.towers) * per_t + cleared_wave * per_w) // 2
+            bonus = max(0, int(raw_bonus * ECONOMY_CONFIG.get("wave_bonus_mult", 0.5)))
             self.game.gold += bonus
+            # Soften noise memory each clear so confidence can recover
+            if getattr(self.game, "noise_injections", 0) > 0:
+                self.game.noise_injections = max(0, self.game.noise_injections - 1)
             # Add XP bonus for wave clear (full mode only)
             if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'xp'):
                 self.game.xp += cleared_wave * 50
-            self.game.wave_bonus_text = f"+{bonus} bonus"
-            self.game.wave_bonus_show_until = frame + 240
+            self.game.wave_bonus_text = f"Wave {cleared_wave} cleared  ·  +{bonus} gold"
+            self.game.wave_bonus_show_until = frame + 300
             # Mini-boss / boss milestone upgrade loot (tunable in config.REWARD_CONFIG)
             self.game.economy.grant_wave_upgrade_rewards(cleared_wave)
             self._snapshot_wave_combat_stats(frame)
@@ -225,9 +528,38 @@ class WaveManager:
             # Check for SPL level up (full mode only)
             if not getattr(self.game, 'minimal_mode', True) and hasattr(self.game, 'check_spl_level_up'):
                 self.game.check_spl_level_up()
-            # Auto-start next wave if auto mode is enabled
-            if self.game.auto_mode:
-                self.start_next_wave(frame)
+            cleared_cb = getattr(self.game, "on_wave_cleared", None)
+            if callable(cleared_cb):
+                cleared_cb(cleared_wave)
+            victory_waves = int(RUN_FLOW_CONFIG.get("victory_waves") or 0)
+            endless = bool(RUN_FLOW_CONFIG.get("endless_after_victory", False))
+            if victory_waves and cleared_wave >= victory_waves and not endless:
+                self.game.game_over = True
+                self.game.run_over_reason = "victory"
+                self.game.final_wave = cleared_wave
+                self.game.final_gold = self.game.gold
+                over_cb = getattr(self.game, "on_run_over", None)
+                if callable(over_cb):
+                    over_cb("victory")
+                return
+            if RUN_FLOW_CONFIG.get("mode") == "auto_chain" or self.game.auto_mode:
+                beat = float(RUN_FLOW_CONFIG.get("clear_beat_seconds", 0) or 0)
+                if beat <= 0:
+                    self.start_next_wave(frame, forced=True)
+                else:
+                    self.game.clear_beat_until = int(frame) + int(round(beat * 60))
+
+    def _maybe_auto_chain(self, frame):
+        """After a clear beat, Auto / auto_chain starts the next wave."""
+        if self.game.wave_active or getattr(self.game, "game_over", False):
+            return
+        if not (RUN_FLOW_CONFIG.get("mode") == "auto_chain" or self.game.auto_mode):
+            return
+        until = getattr(self.game, "clear_beat_until", None)
+        if until is None or int(frame) < int(until):
+            return
+        self.game.clear_beat_until = None
+        self.start_next_wave(frame, forced=True)
 
     def spawn_enemy_at_position(self, enemy_type, x, y, wave_num=1):
         """Spawn an enemy at a specific grid position (for egrem towers)."""

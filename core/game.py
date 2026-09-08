@@ -9,10 +9,12 @@ from data.units import UNIT_TYPES, TOWER_TRAITS
 from data.upgrades import UPGRADE_DEFS, EGREM_SPAWN_CONFIG
 from data.loader import DataLoader
 from utils.path_generator import PathGenerator
-from config import log_debug
+from config import log_debug, INTEL_CONFIG, SORT_CONFIG, ECONOMY_CONFIG, LOOT_CONFIG, BENCH_CONFIG, WAVE_CONFIG
 from .economy import EconomyManager
 from .wave_manager import WaveManager
 from .board import BoardManager
+from .sort_orchestrator import SortOrchestrator
+from .run_setup import RunSetup, MODIFIER_DEFS
 
 
 class Direction(Enum):
@@ -23,7 +25,7 @@ class Direction(Enum):
 
 
 class Game:
-    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, minimal_mode=False):
+    def __init__(self, height=6, width=10, min_path_len=20, web_mode=False, minimal_mode=False, run_setup=None):
         log_debug("Game.__init__ start", {"height": height, "width": width, "web_mode": web_mode, "minimal_mode": minimal_mode}, location="game.py")
 
         # Core playable area (center of expanded grid)
@@ -49,38 +51,48 @@ class Game:
         self.enemies = []
         self.enemy_grid = [[[] for _ in range(self.width)] for _ in range(self.height)]
         self.towers = []
-        self.gold = 50
-        self.lives = 20
+        self.gold = int(ECONOMY_CONFIG.get("starting_gold", 25))
+        self.lives = int(ECONOMY_CONFIG.get("starting_lives", 20))
         self.round_num = 1
         self.wave_active = False
         self.paused = False
-        self.reroll_cost = 2
+        self.reroll_cost = int(ECONOMY_CONFIG.get("reroll_cost", 3))
         self.shop = [None] * 5
-        self.bench = [None] * 10
-        self.map_tile_bench = [None] * 3  # Separate bench for map tiles (increased size)
-        self.upgrade_bench = [None] * 3  # Upgrade bench - stores upgrade IDs
+        tower_slots = int(BENCH_CONFIG.get("tower_slots", 5))
+        self.bench = [None] * tower_slots
+        # Shared loot bag: path tiles + upgrades (limited — use them or lose drops)
+        bag_slots = int(LOOT_CONFIG.get("bag_slots", 4))
+        self.loot_bag = [None] * bag_slots
+        self.loot_misses = 0
+        self.last_loot_miss = None  # {kind, source, wave} when a drop was refused
         self.selected_tower = None
+        self.selected_loot = None  # index into loot_bag (tile or upgrade)
         log_debug("Shop and bench initialized", location="game.py")
-        self.selected_map_tile = None  # Selected tile from map bench
-        self.selected_upgrade = None  # Selected upgrade from upgrade bench
         self.selected_tile_rotation = 0  # 0, 90, 180, 270 degrees
+        self.run_over_reason = None  # None | defeat | forfeit | victory
+        self.on_wave_cleared = None
+        self.on_run_over = None
         self.merge_tower_1 = None
         self.merge_tower_2 = None
         self.merge_preview = None
         self.current_merge_cost = 0  # Display cost of current merge/egrem
         self.game_over = False
         self.final_wave = 1
-        self.final_gold = 50
+        self.final_gold = self.gold
         self.spawn_queue = []
         self.spawn_timer = 0
-        self.spawn_interval = 30
+        self.spawn_interval = int(WAVE_CONFIG.get("spawn_interval", 30))
         self.wave_bonus_text = ""
         self.wave_bonus_show_until = 0
-        self.upgrade_dialog_tower = None  # Tower on grid when upgrade dialog is open
-        self.upgrade_dialog_choices = []  # Current 3 upgrade options when dialog is open
-        self.selected_enemy = None  # Enemy selected for inspection
-        self.tower_stats_open = False
-        self.tower_stats_scroll = 0
+        self.adaptation_tell = ""
+        self.adaptation_toast_until = 0
+        self.combat_pops = []
+        # Single inspector panel (replaces upgrade_dialog / enemy stats / tower stats overlays)
+        self.inspector_mode = None  # None | "tower" | "enemy" | "stats"
+        self.inspector_tower = None
+        self.inspector_enemy = None
+        self.inspector_scroll = 0
+        self.upgrade_dialog_choices = []  # legacy; unused by UI
         self.current_frame = 0
         self.wave_start_frame = 0
         self.last_wave_duration_frames = 0
@@ -93,11 +105,41 @@ class Game:
         self.egrem_flash_bench_idx = None
         self.incompatible_preview = False  # Show "Incompatible" when same-tier towers can't merge
         self.incompatible_show_until = 0   # frame when to auto-clear
-        self.auto_mode = False  # Auto wave toggle
+        self.auto_mode = False  # Auto wave toggle — chains after clear_beat
+        self.clear_beat_until = None  # frame when Auto may start the next wave
         self.web_mode = web_mode  # Flag for reduced load in browser
         self.minimal_mode = minimal_mode  # True = reduced features for debugging/performance
         self.reward_toast_text = ""
         self.reward_toast_until = 0
+        # Scout intel (0–100) — gates Round Guide detail; egrem kills raise it
+        self.intel = int(INTEL_CONFIG.get("starting_intel", 0))
+        self.intel_max = int(INTEL_CONFIG.get("max_intel", 100))
+        # Recent egrem noise injections (decays scout confidence)
+        self.noise_injections = 0
+        self.last_egrem_noise = None  # {added, swaps, types, composition_changed}
+        # Pre-run Sort setup (directive + modifiers)
+        seed = SORT_CONFIG.get("seed")
+        self.run_seed = int(seed) if seed is not None else random.randint(0, 2**31 - 1)
+        force_dir = SORT_CONFIG.get("force_directive")
+        force_mods = SORT_CONFIG.get("force_modifiers")
+        force_hidden = SORT_CONFIG.get("force_hidden")
+        if run_setup is not None:
+            self.run_setup = run_setup
+            self.run_seed = int(getattr(run_setup, "seed", self.run_seed))
+        elif force_dir is not None or force_mods is not None or force_hidden is not None:
+            self.run_setup = RunSetup(
+                seed=self.run_seed,
+                directive_name=force_dir,
+                directive_hidden=bool(force_hidden) if force_hidden is not None else False,
+                modifier_ids=force_mods or [],
+            )
+        else:
+            self.run_setup = RunSetup.random_offer(
+                seed=self.run_seed,
+                hidden_chance=float(SORT_CONFIG.get("directive_hidden_chance", 0.35)),
+            )
+            self.run_seed = self.run_setup.seed
+        self.sort_orchestrator = None
 
         # Shop Power Level and XP system (disabled in minimal mode)
         if not minimal_mode:
@@ -138,6 +180,21 @@ class Game:
         self.wave_manager = WaveManager(self)
         log_debug("WaveManager initialized", location="game.py")
 
+        if SORT_CONFIG.get("enabled", True):
+            self.sort_orchestrator = SortOrchestrator.create(
+                run_setup=self.run_setup,
+                web_mode=self.web_mode,
+            )
+            log_debug("SortOrchestrator initialized", {
+                "seed": self.run_seed,
+                "directive": self.sort_orchestrator.directive_name,
+                "hidden": self.run_setup.directive_hidden,
+                "modifiers": self.run_setup.modifier_ids,
+                "waves": len(self.sort_orchestrator.remaining),
+            }, location="game.py")
+            if self.run_setup.starting_intel_bonus:
+                self.add_intel(self.run_setup.starting_intel_bonus)
+
         def spawn_enemy_at_position(enemy_type, x, y, wave_num=1):
             return self.wave_manager.spawn_enemy_at_position(enemy_type, x, y, wave_num)
         self.spawn_enemy_at_position = spawn_enemy_at_position
@@ -148,8 +205,116 @@ class Game:
         log_debug("Generating initial shop", location="game.py")
         self.economy.generate_shop()
         log_debug("Initial shop generated", location="game.py")
+        self.economy.seed_starting_tiles()
 
         log_debug("Game.__init__ complete", location="game.py")
+
+    def open_inspector(self, mode, target=None):
+        """Open the right-side inspector. Modes: tower | enemy | stats."""
+        if mode not in ("tower", "enemy", "stats"):
+            return
+        self.inspector_mode = mode
+        self.inspector_scroll = 0
+        if mode == "tower":
+            self.inspector_tower = target
+            self.inspector_enemy = None
+        elif mode == "enemy":
+            self.inspector_enemy = target
+            self.inspector_tower = None
+        else:
+            self.inspector_tower = None
+            self.inspector_enemy = None
+
+    def close_inspector(self):
+        self.inspector_mode = None
+        self.inspector_tower = None
+        self.inspector_enemy = None
+        self.inspector_scroll = 0
+
+    def _loot_item(self, idx=None):
+        i = self.selected_loot if idx is None else idx
+        if i is None or not isinstance(self.loot_bag, list):
+            return None
+        if 0 <= i < len(self.loot_bag):
+            return self.loot_bag[i]
+        return None
+
+    @property
+    def selected_map_tile(self):
+        """Index into loot_bag when the selected item is a path tile; else None."""
+        item = self._loot_item()
+        if isinstance(item, dict) and "name" in item and "width" in item:
+            return self.selected_loot
+        return None
+
+    @property
+    def selected_upgrade(self):
+        """Index into loot_bag when the selected item is an upgrade id; else None."""
+        item = self._loot_item()
+        if isinstance(item, str):
+            return self.selected_loot
+        return None
+
+    def add_intel(self, amount):
+        """Raise scout intel (clamped). Returns new intel value."""
+        gain = int(amount)
+        if gain <= 0:
+            return self.intel
+        self.intel = min(self.intel_max, self.intel + gain)
+        return self.intel
+
+    def intel_tier(self):
+        """Return the INTEL_CONFIG tier dict for current intel."""
+        tiers = INTEL_CONFIG.get("tiers", [])
+        chosen = tiers[0] if tiers else {"min": 0, "horizon": 1, "show_types": False, "show_percents": False}
+        for tier in tiers:
+            if self.intel >= tier.get("min", 0):
+                chosen = tier
+        return chosen
+
+    # Backward-compatible aliases used during UI migration
+    @property
+    def upgrade_dialog_tower(self):
+        return self.inspector_tower if self.inspector_mode == "tower" else None
+
+    @upgrade_dialog_tower.setter
+    def upgrade_dialog_tower(self, tower):
+        if tower is None:
+            if self.inspector_mode == "tower":
+                self.close_inspector()
+        else:
+            self.open_inspector("tower", tower)
+
+    @property
+    def selected_enemy(self):
+        return self.inspector_enemy if self.inspector_mode == "enemy" else None
+
+    @selected_enemy.setter
+    def selected_enemy(self, enemy):
+        if enemy is None:
+            if self.inspector_mode == "enemy":
+                self.close_inspector()
+        else:
+            self.open_inspector("enemy", enemy)
+
+    @property
+    def tower_stats_open(self):
+        return self.inspector_mode == "stats"
+
+    @tower_stats_open.setter
+    def tower_stats_open(self, open_):
+        if open_:
+            self.open_inspector("stats")
+        elif self.inspector_mode == "stats":
+            self.close_inspector()
+
+    @property
+    def tower_stats_scroll(self):
+        return self.inspector_scroll
+
+    @tower_stats_scroll.setter
+    def tower_stats_scroll(self, value):
+        self.inspector_scroll = value
 
     def regenerate_map(self, min_len):
         while True:

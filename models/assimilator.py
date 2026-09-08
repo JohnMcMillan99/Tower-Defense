@@ -48,12 +48,12 @@ class Assimilator(Enemy):
                 return True
 
         elif target_type == 'tower':
-            # For towers, we need to check if they can be latched
             tower = self._get_tower_at(target_x, target_y)
             if tower and self._can_latch_tower(tower):
                 self._perform_latch(target_x, target_y, target_type)
-                # For towers, stack count is simpler (just this assimilator for now)
-                self.stack_count = 1
+                self._sync_tower_stacks(self.latch_target)
+                if self.stack_count < 1:
+                    self.stack_count = 1
                 return True
 
         return False
@@ -67,29 +67,26 @@ class Assimilator(Enemy):
         # Stop moving when latched
         self.move_counter = float('inf')  # Prevent movement
 
-    def unlatch(self, wall_manager):
-        """
-        Remove this assimilator from its latch target.
-
-        Args:
-            wall_manager: PathWallManager instance
-        """
+    def unlatch(self, wall_manager=None):
+        """Remove this assimilator from its latch target and resume walking."""
         if not self.is_latched:
             return
 
-        if self.latch_target_type == 'wall':
-            wall = wall_manager.get_wall(self.latch_target[0], self.latch_target[1])
+        pos = self.latch_target
+        ttype = self.latch_target_type
+        if ttype == 'wall' and wall_manager and pos:
+            wall = wall_manager.get_wall(pos[0], pos[1])
             if wall:
                 wall.remove_latch(id(self))
 
-        # Reset latch state
         self.is_latched = False
         self.latch_target = None
         self.latch_target_type = None
         self.stack_count = 1
         self.assimilate_progress = 0.0
-        # Resume movement
         self.move_counter = 0.0
+        if ttype == 'tower':
+            self._sync_tower_stacks(pos)
 
     def update_latch(self, wall_manager, delta_time=1.0):
         """
@@ -115,18 +112,36 @@ class Assimilator(Enemy):
         if self.assimilate_progress >= 1.0:
             self._trigger_corruption(wall_manager)
 
-    def _calculate_corruption_rate(self):
-        """Calculate corruption rate based on stack count."""
-        # Base corruption rate per frame
-        base_rate = 0.01  # 1% per frame base
+    def _sync_tower_stacks(self, pos):
+        """Count live assimilators stuck to the same tower tile."""
+        game = getattr(self, "game", None)
+        if not game or not pos:
+            return
+        latched = [
+            e for e in getattr(game, "enemies", [])
+            if isinstance(e, Assimilator) and e.is_latched and e.latch_target == pos
+        ]
+        if self.is_latched and self.latch_target == pos and self not in latched:
+            latched.append(self)
+        n = max(1, len(latched)) if latched else 1
+        for e in latched:
+            e.stack_count = n
+        if self.is_latched and self.latch_target == pos:
+            self.stack_count = n
 
-        # Scale based on stack count (matches wall drain scaling)
+    def _calculate_corruption_rate(self):
+        """Fill rate per frame; stacks speed the soak."""
+        from config import LATCH_CONFIG
+        from core.sort_directives import combat_hooks_from_game
+        base_rate = float(LATCH_CONFIG.get("fill_per_frame", 0.01))
+        game = getattr(self, "game", None)
+        if game is not None:
+            base_rate *= float(combat_hooks_from_game(game).get("fill_per_frame_mult", 1.0))
         if self.stack_count <= 2:
-            return base_rate * 2.0  # 2% per frame
-        elif self.stack_count <= 6:
-            return base_rate * 5.0  # 5% per frame
-        else:
-            return base_rate * 10.0  # 10%+ per frame
+            return base_rate * 2.0
+        if self.stack_count <= 6:
+            return base_rate * 5.0
+        return base_rate * 10.0
 
     def _is_target_valid(self, wall_manager):
         """Check if current latch target is still valid."""
@@ -155,8 +170,10 @@ class Assimilator(Enemy):
             self.unlatch(wall_manager)
 
         elif self.latch_target_type == 'tower':
-            # Tower takeover - could spawn egrem or convert tower
-            # For now, just unlatch and continue moving
+            if self.latch_target:
+                tower = self._get_tower_at(self.latch_target[0], self.latch_target[1])
+                if tower and hasattr(tower, "apply_latch_payoff"):
+                    tower.apply_latch_payoff()
             self.unlatch(wall_manager)
 
     def move(self):
@@ -169,12 +186,13 @@ class Assimilator(Enemy):
         super().move()
 
     def take_damage(self, dmg, attacker_tags=None):
-        """Override take_damage to handle unlatching on damage."""
         killed = super().take_damage(dmg, attacker_tags)
         if killed and self.is_latched:
-            # If killed while latched, need to notify wall manager
-            # This would be handled by the game loop calling unlatch()
-            pass
+            wm = None
+            game = getattr(self, "game", None)
+            if game is not None and getattr(game, "board", None) is not None:
+                wm = game.board.wall_manager
+            self.unlatch(wm)
         return killed
 
     def get_display_info(self):
