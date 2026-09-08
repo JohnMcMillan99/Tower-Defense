@@ -50,6 +50,10 @@ class EventHandler:
             self.renderer.camera_x = 0
             self.renderer.camera_y = 0
             self.renderer.zoom_level = 1.0
+        elif event.key in (pygame.K_a, pygame.K_d):
+            if self.game.selected_map_tile is not None and self._rules().place_tiles:
+                delta = 1 if event.key == pygame.K_d else -1
+                self.game.selected_tile_rotation = (self.game.selected_tile_rotation + delta) % 4
         elif pygame.K_1 <= event.key <= pygame.K_4:
             if not self._rules().place_tiles and not self._rules().shop:
                 return
@@ -212,20 +216,13 @@ class EventHandler:
         if self.game.merge_preview or self.game.egrem_preview:
             idx1, idx2 = self.game.merge_tower_1, self.game.merge_tower_2
             if idx1 is not None and idx2 is not None:
-                cx1, mid_y = L.bench_card_center(min(idx1, idx2))
-                cx2, _ = L.bench_card_center(max(idx1, idx2))
-                mid_x = (cx1 + cx2) // 2
                 if self.game.merge_preview:
-                    merge_txt = self.renderer.font_merge.render("Merge", True, (0, 0, 0))
-                    merge_rect = merge_txt.get_rect(center=(mid_x, mid_y))
-                    merge_rect.inflate_ip(18, 13)
+                    merge_rect = L.merge_action_rect(idx1, idx2, "Merge", self.renderer.font_merge)
                     if merge_rect.collidepoint(mx, my):
                         self.game.economy.confirm_merge()
                         return
                 elif self.game.egrem_preview:
-                    egrem_txt = self.renderer.font_merge.render("egrem", True, (0, 0, 0))
-                    egrem_rect = egrem_txt.get_rect(center=(mid_x, mid_y))
-                    egrem_rect.inflate_ip(18, 13)
+                    egrem_rect = L.merge_action_rect(idx1, idx2, "egrem", self.renderer.font_merge)
                     if egrem_rect.collidepoint(mx, my):
                         self.game.economy._complete_egrem()
                         return

@@ -68,9 +68,11 @@ def test_game_wires_run_setup(monkeypatch):
     g.intel = 0
     preview = g.wave_manager.preview_upcoming()
     assert preview.get("directive_hint") == "???"
+    assert "Encrypted" in (preview.get("directive_blurb") or "")
     g.intel = 80
     preview = g.wave_manager.preview_upcoming()
     assert preview.get("directive_hint") == "Drone Bubble"
+    assert "shuffle" in (preview.get("directive_blurb") or "").lower()
     assert preview.get("modifier_labels")
 
 

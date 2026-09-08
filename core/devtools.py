@@ -25,7 +25,7 @@ Path = Tuple[str, ...]
 SKIP_KEYS = frozenset({
     "display", "symbol", "name", "desc", "traits", "synergizes_with",
     "label", "fire_type", "seed", "force_directive", "force_modifiers",
-    "force_hidden",
+    "force_hidden", "applies_to_tags", "latch_eligible", "tags",
 })
 
 
@@ -355,6 +355,7 @@ def _build_tables() -> List[Table]:
         Table("sort", "Sort", "Directive pool and planned wave count.", cfg.SORT_CONFIG, enums={
             ("default_directive",): tuple(list_directives()),
         }),
+        Table("directive_combat", "Sort combat", "Per-directive latch / adapt / speed hooks.", cfg.DIRECTIVE_COMBAT),
         Table("economy", "Economy", "Gold, lives, sell, reroll. starting_* apply on New Run.", cfg.ECONOMY_CONFIG),
         Table("rewards", "Rewards", "Loot drops from waves and egrem kills.", cfg.REWARD_CONFIG),
         Table("loot", "Loot bag", "Shared bag size (tiles + upgrades).", cfg.LOOT_CONFIG),
@@ -362,7 +363,9 @@ def _build_tables() -> List[Table]:
         Table("intel", "Intel", "Scout fog-of-war. Nested tiers stay editable.", cfg.INTEL_CONFIG),
         Table("towers", "Towers", "Base dmg / range / fire rate. New towers only.", tower_root),
         Table("shop", "Shop costs", "Buy prices in the shop.", unit_root),
-        Table("enemies", "Enemies", "Base health / speed / difficulty. New spawns only.", Enemy.TYPES),
+        Table("enemies", "Enemies", "Base health / speed / difficulty / first_wave. New spawns only.", Enemy.TYPES),
+        Table("adaptation", "Adaptation", "Hybrid flag + lineage resist. New waves only.", cfg.ADAPTATION_CONFIG),
+        Table("latch", "Latch", "Stick chance and soak payoff (silence / heat). Walls never spawn.", cfg.LATCH_CONFIG),
         Table("upgrades", "Firmware", "Upgrade numeric bonuses.", UPGRADE_DEFS),
         Table("egrem", "Egrem spawn", "Wrong-merge spawn cadence.", EGREM_SPAWN_CONFIG, enums={
             (name, "enemy_type"): ("Drone", "Scout", "Harvester", "Adaptor", "Assimilator")

@@ -25,6 +25,10 @@ def test_catalog_walks_flow_and_economy():
     assert "economy" in ids
     assert "towers" in ids
     assert "enemies" in ids
+    assert "directive_combat" in ids
+    keys = {lf.path[-1] for lf in cat.leaves("directive_combat")}
+    assert "latch_chance_mult" in keys
+    assert "lineage_factor_mult" in keys
     keys = {lf.path[-1] for lf in cat.leaves("economy")}
     assert "starting_gold" in keys
     assert "starting_lives" in keys
@@ -38,7 +42,7 @@ def test_set_mutates_live_config():
     assert RUN_FLOW_CONFIG["victory_waves"] == 4
     cat.reset_all()
     assert ECONOMY_CONFIG["starting_gold"] == 25
-    assert RUN_FLOW_CONFIG["victory_waves"] == 10
+    assert RUN_FLOW_CONFIG["victory_waves"] == 80
 
 
 def test_wave_size_reads_wave_config():
@@ -46,7 +50,7 @@ def test_wave_size_reads_wave_config():
     catalog().set("waves", ("per_wave",), 1)
     assert default_wave_size(3) == 13
     catalog().reset_all()
-    assert default_wave_size(1) == 7
+    assert default_wave_size(1) == 6
 
 
 def test_new_run_picks_up_slider_values():
@@ -80,7 +84,7 @@ def test_easy_preset_is_current_defaults():
     cat.set("economy", ("starting_gold",), 99)
     cat.apply_preset("easy")
     assert ECONOMY_CONFIG["starting_gold"] == 25
-    assert RUN_FLOW_CONFIG["victory_waves"] == 10
+    assert RUN_FLOW_CONFIG["victory_waves"] == 80
     assert cat.active_preset == "easy"
 
 
@@ -97,7 +101,7 @@ def test_medium_and_hard_scale_the_fight():
     assert default_wave_size(1) == 12  # 8 + 1*4
     assert Enemy.TYPES["Drone"]["health"] == 16
     cat.apply_preset("easy")
-    assert default_wave_size(1) == 7
+    assert default_wave_size(1) == 6
     assert Enemy.TYPES["Drone"]["health"] == 10
 
 

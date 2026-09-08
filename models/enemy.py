@@ -3,11 +3,11 @@
 # ==============================
 class Enemy:
     TYPES = {
-        "Drone":    {"health": 10, "speed": 10, "difficulty": 1, "display": "Drone", "symbol": "D"},
-        "Scout":    {"health": 8,  "speed": 6,  "difficulty": 1, "display": "Scout", "symbol": "S"},
-        "Harvester": {"health": 15, "speed": 12, "difficulty": 2, "display": "Harvester", "symbol": "H"},
-        "Adaptor":  {"health": 20, "speed": 8,  "difficulty": 2, "display": "Adaptor", "symbol": "A"},
-        "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "display": "Assimilator", "symbol": "X"},
+        "Drone":       {"health": 10, "speed": 10, "difficulty": 1, "first_wave": 1, "latch_eligible": False, "display": "Drone", "symbol": "D"},
+        "Scout":       {"health": 8,  "speed": 6,  "difficulty": 1, "first_wave": 3, "latch_eligible": False, "display": "Scout", "symbol": "S"},
+        "Harvester":   {"health": 15, "speed": 12, "difficulty": 2, "first_wave": 5, "latch_eligible": False, "display": "Harvester", "symbol": "H"},
+        "Adaptor":     {"health": 20, "speed": 8,  "difficulty": 2, "first_wave": 7, "latch_eligible": False, "display": "Adaptor", "symbol": "A"},
+        "Assimilator": {"health": 25, "speed": 10, "difficulty": 3, "first_wave": 9, "latch_eligible": True,  "display": "Assimilator", "symbol": "X"},
     }
 
     # Add base_xp when not in minimal mode
@@ -87,20 +87,22 @@ class Enemy:
         return False
 
     def adapt_to_profile(self, profile, resistance_tables=None):
-        """Set resistances from strategy profile and YAML resistance_tables.
+        """Set resistances from strategy profile and ADAPTATION_CONFIG.
 
         *profile* is a dict[str, float] from StrategyAnalyzer.analyze().
-        *resistance_tables* is dict from enemies.yaml (optional).
+        *resistance_tables* overrides ADAPTATION_CONFIG (tests / rare YAML).
         """
         if not profile:
             return
-        rt = resistance_tables or {}
-        hybrid_cfg = rt.get("hybrid_exposure", {})
+        from config import ADAPTATION_CONFIG
+        rt = resistance_tables if resistance_tables is not None else ADAPTATION_CONFIG
+        hybrid_cfg = rt.get("hybrid_exposure") or ADAPTATION_CONFIG.get("hybrid_exposure", {})
         factor_per_pt = hybrid_cfg.get("factor_per_point", 0.05)
         max_factor = hybrid_cfg.get("max_factor", 0.5)
         target_tags = hybrid_cfg.get("applies_to_tags", ["hybrid"])
 
         hybrid_exp = profile.get("_hybrid_exposure", 0.0)
+        hooks = profile.get("_combat_hooks") or {}
         factor = min(hybrid_exp * factor_per_pt, max_factor)
 
         for tag in target_tags:
@@ -108,7 +110,17 @@ class Enemy:
 
         speed_boost = hybrid_cfg.get("speed_boost_per_point", 0.02)
         max_speed_boost = hybrid_cfg.get("max_speed_boost", 0.4)
-        self.speed_mult = 1.0 + min(hybrid_exp * speed_boost, max_speed_boost)
+        speed_mult = float(hooks.get("hybrid_speed_mult", 1.0))
+        self.speed_mult = 1.0 + min(hybrid_exp * speed_boost * speed_mult, max_speed_boost)
+
+        from core.strategy_analyzer import lineage_scores, lineage_factor
+        lin_cfg = rt.get("lineage")
+        if lin_cfg is None:
+            lin_cfg = ADAPTATION_CONFIG.get("lineage") or {}
+        for tag, score in lineage_scores(profile).items():
+            lin_factor = lineage_factor(score, lin_cfg, hooks)
+            if lin_factor > 0:
+                self.resistances[tag] = max(0.3, 1.0 - lin_factor)
 
     def get_resistance(self, attacker_tags):
         """Return combined damage multiplier given the attacker's trait tags.

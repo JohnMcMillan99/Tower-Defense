@@ -11,42 +11,47 @@ class UILayout:
     """Compute screen rects from game grid size. Recreate/refresh after expand."""
 
     TILE = 40
-    SHOP_H = 140
-    BENCH_H = 130
+    SHOP_H = 100
+    BENCH_H = 80
     PANEL_RIGHT_W = 180
 
     # Top-row column split (shop : map tiles)
     TOP_SHOP_RATIO = 5
     TOP_MAP_RATIO = 3
 
-    SHOP_CARD_W = 70
-    SHOP_CARD_H = 100
-    SHOP_CARD_GAP = 80
-    SHOP_PAD_X = 12
-    SHOP_PAD_Y = 18
+    SHOP_CARD_W = 62
+    SHOP_CARD_H = 72
+    SHOP_CARD_GAP = 70
+    SHOP_PAD_X = 10
+    SHOP_PAD_Y = 16
 
     TOWER_BENCH_SLOTS = 5
-    BENCH_CARD_W = 70
-    BENCH_CARD_H = 90
-    BENCH_CARD_GAP = 80
-    BENCH_ORIGIN_X = 15
-    BENCH_ORIGIN_Y_OFFSET = 15  # below SHOP_H
+    BENCH_CARD_W = 62
+    BENCH_CARD_H = 62
+    BENCH_CARD_GAP = 70
+    BENCH_ORIGIN_X = 12
+    BENCH_ORIGIN_Y_OFFSET = 10  # below SHOP_H
 
     MAP_BENCH_SLOTS = 4  # shared loot bag (tiles + upgrades)
-    MAP_CARD_W = 52
-    MAP_CARD_H = 72
-    MAP_CARD_GAP = 56
+    MAP_CARD_W = 48
+    MAP_CARD_H = 34
+    MAP_CARD_GAP = 52
     MAP_PAD_X = 8
-    MAP_PAD_Y = 18
+    MAP_PAD_Y = 16
 
     UPGRADE_SLOTS = 0  # upgrades live in loot bag now
     UPGRADE_CARD_W = 50
     UPGRADE_CARD_H = 80
     UPGRADE_CARD_GAP = 55
 
-    REROLL_SIZE = 35
+    REROLL_SIZE = 32
     BTN_W = 100
     BTN_H = 26
+    MERGE_PAD = (13, 8)
+    GUIDE_W = 164
+    GUIDE_H = 176
+    GUIDE_NEXT_STAMP = 26
+    GUIDE_PIP_STAMP = 14
 
     def __init__(self, game):
         self.refresh(game)
@@ -89,11 +94,10 @@ class UILayout:
 
     def reroll_rect(self):
         # Sit after the 5th shop card, still inside the shop column
-        x = self.SHOP_PAD_X + 5 * self.SHOP_CARD_GAP - 10
-        # Clamp into shop column if grid is narrow
+        x = self.SHOP_PAD_X + 5 * self.SHOP_CARD_GAP - 8
         max_x = self.shop_col_w - self.REROLL_SIZE - 8
         x = min(x, max_x)
-        return pygame.Rect(x, 40, self.REROLL_SIZE, self.REROLL_SIZE)
+        return pygame.Rect(x, self.SHOP_PAD_Y + 8, self.REROLL_SIZE, self.REROLL_SIZE)
 
     # --- Tower bench ---
     def bench_card_rect(self, i):
@@ -125,12 +129,22 @@ class UILayout:
     def rotate_button_rects(self):
         """Left / right rotate buttons under loot cards."""
         base_y = self.map_bench_y + 2 * (self.MAP_CARD_H + 6) + 2
-        # Keep inside SHOP_H
-        base_y = min(base_y, self.SHOP_H - 26)
+        base_y = min(base_y, self.SHOP_H - 22)
         rot_x = self.map_bench_x
-        left = pygame.Rect(rot_x, base_y, 26, 22)
-        right = pygame.Rect(rot_x + 34, base_y, 26, 22)
+        left = pygame.Rect(rot_x, base_y, 26, 20)
+        right = pygame.Rect(rot_x + 34, base_y, 26, 20)
         return left, right
+
+    def merge_action_rect(self, idx1, idx2, label, font):
+        """Shared Merge / egrem confirm hitbox (draw + click)."""
+        cx1, cy = self.bench_card_center(min(idx1, idx2))
+        cx2, _ = self.bench_card_center(max(idx1, idx2))
+        mid_x = (cx1 + cx2) // 2
+        surf = font.render(str(label), True, (0, 0, 0))
+        rect = surf.get_rect(center=(mid_x, cy))
+        pad_x, pad_y = self.MERGE_PAD
+        rect.inflate_ip(pad_x, pad_y)
+        return rect
 
     # --- Upgrade bench (deprecated — empty region so clicks fall through) ---
     def upgrade_card_rect(self, i):
@@ -179,7 +193,20 @@ class UILayout:
             show_spl = self.show_spl()
         _, _, auto = self.panel_control_rects(show_spl=show_spl)
         top = auto.bottom + 10
-        return pygame.Rect(self.GRID_W + 8, top, 164, 132)
+        return pygame.Rect(self.GRID_W + 8, top, self.GUIDE_W, self.GUIDE_H)
+
+    def guide_stamp_rects(self, guide, y, count, size, x0=None):
+        """Virus stamp row inside the Round Guide. Clips to the rail."""
+        if x0 is None:
+            x0 = guide.x + 6
+        gap = 2
+        out = []
+        for i in range(max(0, int(count))):
+            r = pygame.Rect(x0 + i * (size + gap), y, size, size)
+            if r.right > guide.right - 4:
+                break
+            out.append(r)
+        return out
 
     # --- Inspector (single panel for tower / enemy / stats) ---
     def inspector_rect(self):

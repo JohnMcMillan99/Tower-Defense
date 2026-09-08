@@ -53,6 +53,7 @@ class Tower:
         self.upgrades = []          # list of upgrade ids
         self.heat = 0.0             # NEW: heat buildup mechanic
         self.max_heat = 10.0
+        self.silence_frames = 0     # latch soak: skip fire while > 0
         self.status_effects = {}    # e.g. {'stun': 120 frames}
         self.buffs = {}             # buff_type: {'amount': val, 'frames_left': int}
 
@@ -98,7 +99,23 @@ class Tower:
                 combo = self._get_hybrid_combo_tag()
                 if combo:
                     base_traits.append(combo)
+        for tag in self._lineage_tags():
+            if tag not in base_traits:
+                base_traits.append(tag)
         return base_traits
+
+    def _lineage_tags(self):
+        """Stable combat tags the swarm can resist (neural / plasma / …)."""
+        from config import ADAPTATION_CONFIG
+        mapping = ((ADAPTATION_CONFIG.get("lineage") or {}).get("tags")) or {}
+        names = [self.base_type]
+        names.extend(self.parents or [])
+        out = []
+        for name in names:
+            tag = mapping.get(name)
+            if tag and tag not in out:
+                out.append(tag)
+        return out
 
     def _get_hybrid_combo_tag(self):
         """Derive hybrid combo tag from parent types (e.g. 'neural_plasma')."""
@@ -309,6 +326,12 @@ class Tower:
         return killed
 
     def update(self, enemies, current_frame, game):
+        if getattr(self, "silence_frames", 0) > 0:
+            self.silence_frames -= 1
+            if self.cooldown > 0:
+                self.cooldown -= 1
+            return None
+
         if 'stun' in self.status_effects and self.status_effects['stun'] > 0:
             self.status_effects['stun'] -= 1
             return None
@@ -482,22 +505,18 @@ class Tower:
             return None
 
     def can_be_latched(self):
-        """
-        Check if this tower can be latched by assimilators.
+        """Assimilators stick to base and hybrid. Pure merges are immune."""
+        return self.get_merge_type() != "pure"
 
-        Returns:
-            bool: True if tower is vulnerable to latching (hybrid), False if immune (pure)
-        """
-        # Check tier_traits.immune from merges.yaml data
-        if hasattr(self, 'game') and self.game and hasattr(self.game, 'data_loader'):
-            tower_data = self.game.data_loader.get_tower_data(self.base_type)
-            if tower_data and 'tier_traits' in tower_data and 'immune' in tower_data['tier_traits']:
-                immune_tiers = tower_data['tier_traits']['immune']
-                if isinstance(immune_tiers, list) and self.merge_generation in immune_tiers:
-                    return False  # Immune at this tier
-
-        # Default: all towers are vulnerable (hybrid) unless specified otherwise
-        return True
+    def apply_latch_payoff(self):
+        """Silence + heat after a completed assimilator soak. Config owns duration."""
+        from config import LATCH_CONFIG
+        frames = max(0, int(LATCH_CONFIG.get("silence_frames", 90)))
+        heat = float(LATCH_CONFIG.get("heat_on_corrupt", 3.0) or 0)
+        self.silence_frames = max(int(getattr(self, "silence_frames", 0) or 0), frames)
+        self.heat = min(self.max_heat, self.heat + heat)
+        if self.heat >= self.max_heat:
+            self.cooldown += 12
 
     def camouflage_repels(self):
         """

@@ -13,18 +13,19 @@ from core.sort_directives import SortDirective, get_directive
 from config import SORT_CONFIG
 
 
+_TYPE_ORDER = ("Drone", "Scout", "Harvester", "Adaptor", "Assimilator")
+
+
 def unlocked_types_for_wave(wave_num: int) -> List[str]:
     """Enemy types eligible for a normal wave (shared by pool build + legacy spawn)."""
-    types = ["Drone"]
-    if wave_num >= 3:
-        types.append("Scout")
-    if wave_num >= 5:
-        types.append("Harvester")
-    if wave_num >= 7:
-        types.append("Adaptor")
-    if wave_num >= 9:
-        types.append("Assimilator")
-    return types
+    from models.enemy import Enemy
+    types = []
+    for name in _TYPE_ORDER:
+        stats = Enemy.TYPES.get(name) or {}
+        first = int(stats.get("first_wave", 1))
+        if int(wave_num) >= first:
+            types.append(name)
+    return types or ["Drone"]
 
 
 def default_wave_size(wave_num: int, web_mode: bool = False) -> int:
@@ -35,8 +36,45 @@ def default_wave_size(wave_num: int, web_mode: bool = False) -> int:
         div = max(1, int(WAVE_CONFIG.get("web_divisor", 2)))
         return max(web_min, (web_base + wave_num) // div)
     base = int(WAVE_CONFIG.get("base_size", 5))
-    per = int(WAVE_CONFIG.get("per_wave", 2))
-    return base + wave_num * per
+    per = int(WAVE_CONFIG.get("per_wave", 1))
+    size = base + int(wave_num) * per
+    cap = WAVE_CONFIG.get("size_cap")
+    if cap is not None:
+        size = min(size, int(cap))
+    return max(1, size)
+
+
+def estimate_auto_run_seconds(
+    victory_waves: int | None = None,
+    clear_beat_seconds: float | None = None,
+    tail_seconds: float = 3.0,
+    fps: float = 60.0,
+) -> dict:
+    """Wall-clock envelope for Auto success using WAVE_CONFIG + clear_beat only.
+
+    Per wave: spawn cadence for (size-1) gaps + last-enemy tail + clear beat.
+    Does not model HP, path length, or player skill — clock tuning only.
+    """
+    from config import WAVE_CONFIG, RUN_FLOW_CONFIG, SORT_CONFIG
+
+    waves = int(victory_waves if victory_waves is not None else RUN_FLOW_CONFIG.get("victory_waves", 80))
+    beat = float(
+        clear_beat_seconds if clear_beat_seconds is not None
+        else RUN_FLOW_CONFIG.get("clear_beat_seconds", 2) or 0
+    )
+    interval = float(WAVE_CONFIG.get("spawn_interval", 30))
+    planned = int(SORT_CONFIG.get("planned_waves", waves))
+    total = 0.0
+    for w in range(1, waves + 1):
+        size = default_wave_size(w)
+        spawn_s = max(0, size - 1) * (interval / max(1.0, fps))
+        total += spawn_s + float(tail_seconds) + beat
+    return {
+        "victory_waves": waves,
+        "planned_waves": planned,
+        "seconds": total,
+        "minutes": total / 60.0,
+    }
 
 
 class SortOrchestrator:
@@ -163,29 +201,34 @@ class SortOrchestrator:
             })
         return out
 
-    def inject(self, drones: Sequence[DroneData], at_front: bool = False):
-        """Egrem/noise hook (Slice D): splice extra drones into remaining pool."""
-        flat: List[DroneData] = []
-        for w in self.remaining:
-            flat.extend(w)
+    def inject(self, drones: Sequence[DroneData], at_front: bool = False, swaps: int = 0):
+        """Egrem noise: reshape the next planned wave (count + composition).
+
+        Extras prepend into remaining[0]. Optional type-swaps rewrite existing
+        slots toward the injected types so the Round Guide forecast moves even
+        when inject count is small. `at_front` is kept for callers; reshape
+        always targets the next wave (not the plan tail).
+        """
+        _ = at_front
         extra = list(drones)
-        if at_front:
-            flat = extra + flat
-        else:
-            flat = flat + extra
-        sizes = [len(w) for w in self.remaining] or [len(extra)]
-        if not sizes:
+        if not self.remaining:
             self.remaining = [extra] if extra else []
             return
-        rebuilt: List[List[DroneData]] = []
-        idx = 0
-        for i, size in enumerate(sizes):
-            if i == len(sizes) - 1:
-                rebuilt.append(flat[idx:])
-            else:
-                rebuilt.append(flat[idx:idx + size])
-                idx += size
-        self.remaining = rebuilt
+
+        nxt = list(self.remaining[0])
+        swap_n = max(0, int(swaps or 0))
+        if nxt and extra and swap_n > 0:
+            types = [d.enemy_type for d in extra]
+            idxs = list(range(len(nxt)))
+            rng = random.Random((self.seed + self.waves_emitted * 17 + len(extra)) & 0xFFFFFFFF)
+            rng.shuffle(idxs)
+            for i in idxs[: min(swap_n, len(nxt))]:
+                et = rng.choice(types)
+                origin = getattr(nxt[i], "origin_wave", 1)
+                nxt[i] = DroneData.from_type(et, wave_num=origin, noise=rng.randint(-1, 2))
+
+        # Grow next wave at the front so scout composition stamps update now
+        self.remaining[0] = list(extra) + nxt
 
 
 def build_run_pool(seed: int, planned_waves: int, wave_size_fn, unlocked_fn) -> List[DroneData]:

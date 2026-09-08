@@ -102,12 +102,50 @@ class EconomyManager:
                 return True
         return False
 
+    def bag_is_full(self):
+        bag = self._loot_bag()
+        return bool(bag) and all(s is not None for s in bag)
+
+    def bag_free_slots(self):
+        bag = self._loot_bag()
+        return sum(1 for s in bag if s is None)
+
+    def _record_loot_miss(self, kind, source, wave=None):
+        """Durable run state when a drop is refused. Toast is separate."""
+        self.game.loot_misses = int(getattr(self.game, "loot_misses", 0) or 0) + 1
+        self.game.last_loot_miss = {
+            "kind": kind,
+            "source": source,
+            "wave": wave if wave is not None else int(getattr(self.game, "round_num", 0) or 0),
+        }
+
     def try_add_tile_to_bench(self, tile_data=None):
         """Add a path tile to the shared loot bag. Returns True if placed."""
         tile = tile_data if tile_data is not None else self._pick_random_tile()
         if tile is None:
             return False
         return self.try_add_loot(tile)
+
+    def _straight_tile(self):
+        """Copy of the Straight tile def (starter / guaranteed grow piece)."""
+        minimal_mode = getattr(self.game, "minimal_mode", False)
+        for t in get_tile_types(minimal_mode):
+            if t.get("name") == "Straight":
+                return t.copy()
+        available = get_tile_types(minimal_mode)
+        return available[0].copy() if available else None
+
+    def seed_starting_tiles(self):
+        """Put Straight copies into the loot bag on New Run."""
+        n = int(REWARD_CONFIG.get("starting_path_tiles", 0) or 0)
+        granted = 0
+        for _ in range(max(0, n)):
+            tile = self._straight_tile()
+            if tile is None:
+                break
+            if self.try_add_loot(tile):
+                granted += 1
+        return granted
 
     def try_grant_egrem_tile_drop(self):
         """Roll egrem kill → path tile drop into loot bag."""
@@ -117,6 +155,7 @@ class EconomyManager:
         if self.try_add_tile_to_bench():
             self._set_reward_toast("Path tile → loot bag")
             return True
+        self._record_loot_miss("tile", "egrem")
         self._set_reward_toast("Loot bag full — tile lost")
         return False
 
@@ -135,7 +174,7 @@ class EconomyManager:
         return self.try_add_loot(upgrade_id)
 
     def grant_wave_upgrade_rewards(self, wave_num):
-        """Grant upgrade loot for mini-boss / boss milestone waves into loot bag."""
+        """Grant tile then upgrade loot for mini-boss / boss waves into loot bag."""
         mini_iv = REWARD_CONFIG.get("mini_boss_wave_interval", 5)
         boss_iv = REWARD_CONFIG.get("boss_wave_interval", 20)
         if wave_num <= 0:
@@ -146,19 +185,44 @@ class EconomyManager:
         if not is_boss and not is_mini:
             return 0
 
-        count = REWARD_CONFIG.get("boss_upgrade_count", 1) if is_boss else REWARD_CONFIG.get("mini_boss_upgrade_count", 1)
-        granted = 0
-        for _ in range(count):
+        source = "boss" if is_boss else "mini_boss"
+        tile_count = int(
+            (REWARD_CONFIG.get("boss_tile_count", 0) if is_boss
+             else REWARD_CONFIG.get("mini_boss_tile_count", 0)) or 0
+        )
+        tiles_granted = 0
+        tiles_lost = 0
+        for _ in range(max(0, tile_count)):
+            if self.try_add_tile_to_bench():
+                tiles_granted += 1
+            else:
+                tiles_lost += 1
+                self._record_loot_miss("tile", source, wave=wave_num)
+
+        upg_count = REWARD_CONFIG.get("boss_upgrade_count", 1) if is_boss else REWARD_CONFIG.get("mini_boss_upgrade_count", 1)
+        upg_granted = 0
+        upg_lost = 0
+        for _ in range(upg_count):
             uid = self._pick_upgrade_reward(prefer_wildcard=is_boss)
             if self.try_add_upgrade_to_bench(uid):
-                granted += 1
+                upg_granted += 1
+            else:
+                upg_lost += 1
+                self._record_loot_miss("upgrade", source, wave=wave_num)
 
-        if granted:
-            label = "Boss" if is_boss else "Mini-boss"
-            self._set_reward_toast(f"{label} loot: +{granted} upgrade{'s' if granted != 1 else ''}")
-        elif count:
+        label = "Boss" if is_boss else "Mini-boss"
+        parts = []
+        if tiles_granted:
+            parts.append(f"+{tiles_granted} tile{'s' if tiles_granted != 1 else ''}")
+        if upg_granted:
+            parts.append(f"+{upg_granted} upgrade{'s' if upg_granted != 1 else ''}")
+        if parts:
+            self._set_reward_toast(f"{label} loot: " + ", ".join(parts))
+        elif tiles_lost and not upg_granted:
+            self._set_reward_toast("Loot bag full — tile lost")
+        elif upg_lost:
             self._set_reward_toast("Loot bag full — upgrade lost")
-        return granted
+        return upg_granted
 
     def _set_reward_toast(self, text, frames=240):
         """Show a short HUD toast (drawn preferentially over wave bonus)."""
@@ -171,6 +235,8 @@ class EconomyManager:
 
     def select_loot(self, idx):
         """Select a loot_bag slot (tile or upgrade)."""
+        if not (self._rules().shop or self._rules().place_tiles):
+            return False
         bag = self._loot_bag()
         if idx < 0 or idx >= len(bag) or bag[idx] is None:
             return False
@@ -455,6 +521,8 @@ class EconomyManager:
         return True
 
     def sell_from_bench(self, idx):
+        if not self._rules().shop:
+            return
         if idx < 0 or idx >= self._tower_bench_size() or self.game.bench[idx] is None:
             return
         t = self.game.bench.pop(idx)
@@ -468,6 +536,8 @@ class EconomyManager:
 
     def sell_tower_from_grid(self, gx, gy):
         """Remove tower at (gx, gy) and refund a fraction of gold_invested."""
+        if not self._rules().place_towers:
+            return False
         for t in self.game.towers[:]:
             if t.x == gx and t.y == gy:
                 refund = int(t.gold_invested * ECONOMY_CONFIG.get("sell_grid_refund", 0.45))
@@ -521,6 +591,8 @@ class EconomyManager:
         return bool(needed and needed & tower_traits)
 
     def apply_upgrade(self, tower, upgrade_id):
+        if not self._rules().shop:
+            return False
         if not self.can_apply_upgrade(tower, upgrade_id):
             return False
         u = UPGRADE_DEFS[upgrade_id]
@@ -534,6 +606,8 @@ class EconomyManager:
 
     def apply_upgrade_from_bench(self, tower, upgrade_id, bench_idx):
         """Apply upgrade from bench to tower (no additional gold cost)."""
+        if not self._rules().shop:
+            return False
         if not self.can_apply_upgrade(tower, upgrade_id):
             return False
         bag = self._loot_bag()

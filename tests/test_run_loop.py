@@ -36,6 +36,18 @@ def test_app_new_run_creates_game_only_then():
     assert app.game.gold == int(ECONOMY_CONFIG.get("starting_gold", 25))
 
 
+def test_new_run_toasts_sort_identity():
+    from core.run_setup import RunSetup, DIRECTIVE_BLURBS
+
+    app = App(headless=True, minimal_mode=True)
+    app.select_slot(0)
+    setup = RunSetup(seed=9, directive_name="DescendingSpike", directive_hidden=False)
+    app.new_run(run_setup=setup)
+    assert "Descending Spike" in app.game.reward_toast_text
+    assert DIRECTIVE_BLURBS["DescendingSpike"] in app.game.reward_toast_text
+    assert app.game.reward_toast_until > 0
+
+
 def test_pause_menu_blocks_shop():
     app = App(headless=True, minimal_mode=True)
     app.select_slot(0)
@@ -49,6 +61,24 @@ def test_pause_menu_blocks_shop():
     app.close_pause()
     # Unpaused: buying is allowed if gold and bench space exist
     assert play_rules(app.game, pause_open=False).shop is True
+
+
+def test_pause_blocks_loot_and_sell():
+    app = App(headless=True, minimal_mode=True)
+    app.select_slot(0)
+    app.new_run()
+    app.game.loot_bag[0] = {"name": "Straight", "width": 1, "height": 1}
+    app.game.economy.generate_shop()
+    app.game.economy.move_to_bench(0)
+    app.open_pause()
+    gold = app.game.gold
+    assert app.game.economy.select_loot(0) is False
+    assert app.game.selected_loot is None
+    app.game.economy.sell_from_bench(0)
+    assert app.game.gold == gold
+    assert app.game.bench[0] is not None
+    app.close_pause()
+    assert app.game.economy.select_loot(0) is True
 
 
 def test_wave_clear_writes_checkpoint():
@@ -332,3 +362,58 @@ def test_force_directive_skips_sort_offer(monkeypatch):
     assert app.sort_offer_open is False
     assert app.screen == SCREEN_IN_RUN
     assert app.game.run_setup.directive_name == "PowerSort"
+
+
+def test_wave_size_caps_late_waves():
+    from core.sort_orchestrator import default_wave_size
+    from config import WAVE_CONFIG
+
+    cap = int(WAVE_CONFIG["size_cap"])
+    assert default_wave_size(1) == 6
+    assert default_wave_size(17) == cap
+    assert default_wave_size(80) == cap
+
+
+def test_auto_waits_clear_beat(monkeypatch):
+    monkeypatch.setitem(RUN_FLOW_CONFIG, "clear_beat_seconds", 2)
+    monkeypatch.setitem(RUN_FLOW_CONFIG, "victory_waves", 99)
+    app = App(headless=True, minimal_mode=True)
+    app.select_slot(0)
+    app.new_run()
+    g = app.game
+    g.auto_mode = True
+    g.wave_active = True
+    g.enemies = []
+    g.spawn_queue = []
+    g.wave_manager.update_wave(10)
+    assert g.game_over is False
+    assert g.wave_active is False
+    assert g.round_num == 2
+    assert g.clear_beat_until == 130
+    g.wave_manager.update_wave(129)
+    assert g.wave_active is False
+    g.wave_manager.update_wave(130)
+    assert g.wave_active is True
+
+
+def test_auto_run_clock_targets_twenty_minutes(monkeypatch):
+    """f10: spawn_interval / size_cap / clear_beat only → ~20 min Auto success."""
+    from core.sort_orchestrator import estimate_auto_run_seconds
+    from config import SORT_CONFIG, WAVE_CONFIG, RUN_FLOW_CONFIG
+
+    monkeypatch.setitem(RUN_FLOW_CONFIG, "victory_waves", 80)
+    monkeypatch.setitem(RUN_FLOW_CONFIG, "clear_beat_seconds", 2)
+    monkeypatch.setitem(WAVE_CONFIG, "base_size", 5)
+    monkeypatch.setitem(WAVE_CONFIG, "per_wave", 1)
+    monkeypatch.setitem(WAVE_CONFIG, "size_cap", 22)
+    monkeypatch.setitem(WAVE_CONFIG, "spawn_interval", 30)
+    monkeypatch.setitem(SORT_CONFIG, "planned_waves", 80)
+
+    est = estimate_auto_run_seconds()
+    assert est["victory_waves"] == 80
+    assert SORT_CONFIG["planned_waves"] >= 80
+    # Envelope: ~18–22 minutes with default tail assumption
+    assert 18.0 <= est["minutes"] <= 22.0
+    # Mid-run death proxy (~wave 45–50) lands near ~12 min
+    mid = estimate_auto_run_seconds(victory_waves=48)
+    assert 10.0 <= mid["minutes"] <= 14.0

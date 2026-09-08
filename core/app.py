@@ -106,12 +106,26 @@ class App:
         self.sort_offer_open = False
         self.sort_offer = None
         self.screen_id = SCREEN_IN_RUN
+        self._sort_identity_toast()
         if self.headless:
             self.renderer = None
             self.handler = None
             return
         self.renderer = Renderer(self.game)
         self.handler = EventHandler(self.game, self.renderer, app=self)
+
+    def _sort_identity_toast(self):
+        """Compile identity toast. Continue does not call this."""
+        from core.run_setup import DIRECTIVE_BLURBS
+
+        game = self.game
+        setup = getattr(game, "run_setup", None)
+        if game is None or setup is None or setup.directive_hidden:
+            return
+        blurb = DIRECTIVE_BLURBS.get(setup.directive_name, "")
+        label = getattr(setup, "directive_label", None) or setup.directive_name
+        game.reward_toast_text = f"{label}  ·  {blurb}" if blurb else str(label)
+        game.reward_toast_until = 360
 
     def open_sort_offer(self):
         from config import SORT_CONFIG

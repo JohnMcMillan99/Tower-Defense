@@ -10,6 +10,9 @@ from core.sort_directives import (
     PowerSortDirective,
     PriorityExtractDirective,
     ResistanceBucketDirective,
+    attach_combat_hooks,
+    combat_hooks_for,
+    combat_hooks_from_game,
     get_directive,
     list_directives,
 )
@@ -81,6 +84,52 @@ def test_resistance_bucket_groups_types_early():
     counts = Counter(d.enemy_type for d in waves[0])
     dominant = max(counts.values())
     assert dominant >= len(waves[0]) * 0.6
+
+
+def test_assimilation_merge_latch_chance_exceeds_power_sort():
+    from config import LATCH_CONFIG
+    from core.run_setup import RunSetup
+
+    merge = type("G", (), {"run_setup": RunSetup(seed=1, directive_name="AssimilationMerge")})()
+    power = type("G", (), {"run_setup": RunSetup(seed=1, directive_name="PowerSort")})()
+    base = float(LATCH_CONFIG.get("chance_base", 0.4))
+    merge_c = base * float(combat_hooks_from_game(merge).get("latch_chance_mult", 1.0))
+    power_c = base * float(combat_hooks_from_game(power).get("latch_chance_mult", 1.0))
+    assert merge_c > power_c
+
+
+def test_resistance_bucket_lineage_factor_exceeds_power_sort():
+    from core.strategy_analyzer import lineage_factor
+
+    score = 3.0
+    power = lineage_factor(score, hooks=combat_hooks_for("PowerSort"))
+    bucket = lineage_factor(score, hooks=combat_hooks_for("ResistanceBucket"))
+    assert bucket > power
+    assert lineage_factor(1.0, hooks=combat_hooks_for("PowerSort")) == 0.0
+    assert lineage_factor(1.0, hooks=combat_hooks_for("DescendingSpike")) > 0.0
+
+
+def test_attach_combat_hooks_copies_profile():
+    from core.run_setup import RunSetup
+
+    game = type("G", (), {"run_setup": RunSetup(seed=1, directive_name="PivotPartition")})()
+    raw = {"neural": 2.0}
+    stamped = attach_combat_hooks(game, raw)
+    assert stamped["_combat_hooks"].get("fill_per_frame_mult") == 1.25
+    assert "_combat_hooks" not in raw
+
+
+def test_wave_start_stamps_directive_combat():
+    from core.game import Game
+    from core.run_setup import RunSetup
+
+    g = Game(
+        minimal_mode=True,
+        run_setup=RunSetup(seed=1, directive_name="ResistanceBucket"),
+    )
+    g.wave_manager.start_next_wave(frame=0, forced=True)
+    hooks = g.wave_manager._strategy_profile.get("_combat_hooks") or {}
+    assert hooks.get("lineage_factor_mult") == 1.25
 
 
 def test_harness_module_runs():

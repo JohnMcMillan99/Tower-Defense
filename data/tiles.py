@@ -36,14 +36,14 @@ def get_tile_types(minimal_mode=False):
             "traits": ["path_turn"],
         },
         {
-            "name": "Loop",
+            "name": "U-Bend",
             "width": 2, "height": 2,
             "base_cost": 12,
-            "path_grid": [[True, True], [True, True]],
+            "path_grid": [[True, True], [True, False]],
             "entry_side": "S",
-            "exit_side": "N",
+            "exit_side": "E",
             "unlock_level": 1,
-            "traits": ["path_loop", "risk_medium"],
+            "traits": ["path_turn"],
         },
     ]
 

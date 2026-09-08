@@ -263,3 +263,27 @@ def list_directives() -> List[str]:
 def get_directive(name: str) -> SortDirective:
     factory = DIRECTIVE_REGISTRY.get(name) or DIRECTIVE_REGISTRY["PowerSort"]
     return factory()
+
+
+def combat_hooks_for(name: str) -> dict:
+    from config import DIRECTIVE_COMBAT
+    return dict(DIRECTIVE_COMBAT.get(name) or {})
+
+
+def combat_hooks_from_game(game) -> dict:
+    name = "PowerSort"
+    setup = getattr(game, "run_setup", None) if game is not None else None
+    if setup and getattr(setup, "directive_name", None):
+        name = setup.directive_name
+    elif game is not None:
+        orch = getattr(game, "sort_orchestrator", None)
+        if orch and getattr(orch, "directive_name", None):
+            name = orch.directive_name
+    return combat_hooks_for(name)
+
+
+def attach_combat_hooks(game, profile) -> dict:
+    """Copy a strategy profile and stamp this run's directive combat hooks."""
+    out = dict(profile or {})
+    out["_combat_hooks"] = combat_hooks_from_game(game)
+    return out

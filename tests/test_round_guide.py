@@ -21,7 +21,9 @@ def test_preview_low_intel_hides_types():
     assert len(preview["waves"]) == 1
     entry = preview["waves"][0]
     assert entry["wave"] == 1
-    assert entry["count"] == g.wave_manager.wave_size_for(1)
+    assert entry["count"] >= 1
+    if g.sort_orchestrator:
+        assert entry["count"] == g.sort_orchestrator.forecast(1)[0]["count"]
     assert entry["composition"] == {}
     assert entry["show_types"] is False
 
@@ -86,3 +88,65 @@ def test_round_guide_rect_below_auto():
     assert guide.y >= auto.bottom
     insp = L.inspector_rect()
     assert insp.y >= guide.bottom
+
+
+def test_compile_identity_visible_at_contact_intel():
+    from core.run_setup import RunSetup, DIRECTIVE_BLURBS
+
+    g = Game(minimal_mode=True, run_setup=RunSetup(seed=3, directive_name="PowerSort", directive_hidden=False))
+    g.intel = 0
+    preview = g.wave_manager.preview_upcoming()
+    assert preview["directive_hint"] == "Power Sort"
+    assert preview["directive_blurb"] == DIRECTIVE_BLURBS["PowerSort"]
+    assert preview["directive_hidden"] is False
+    assert preview.get("adaptation_tell") == ""
+
+
+def test_preview_pure_merge_is_latch_safe():
+    from models.tower import Tower
+
+    g = Game(minimal_mode=True)
+    pure = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Neural Processor"),
+    )
+    g.towers.append(pure)
+    preview = g.wave_manager.preview_upcoming()
+    tell = (preview.get("adaptation_tell") or "").lower()
+    assert "neural" in tell
+    assert preview.get("hybrid_exposure", 0) == 0
+    assert pure.can_be_latched() is False
+
+
+def test_preview_names_hybrid_adaptation():
+    from models.tower import Tower
+
+    g = Game(minimal_mode=True)
+    hybrid = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Plasma Capacitor"),
+    )
+    g.towers.append(hybrid)
+    preview = g.wave_manager.preview_upcoming()
+    tell = preview.get("adaptation_tell") or ""
+    assert "hybrid" in tell.lower()
+    assert preview["hybrid_exposure"] > 0
+
+
+def test_wave_start_toasts_adaptation():
+    from models.tower import Tower
+
+    g = Game(minimal_mode=True)
+    hybrid = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Plasma Capacitor"),
+    )
+    g.towers.append(hybrid)
+    g.wave_manager.start_next_wave(frame=10, forced=True)
+    assert "hybrid" in g.adaptation_tell.lower()
+    assert g.adaptation_toast_until == 370
+    # This wave's tell stays frozen even if the board changes mid-combat
+    g.towers.append(hybrid)
+    mid = g.wave_manager.preview_upcoming()
+    assert mid["adaptation_tell"] == g.adaptation_tell
+

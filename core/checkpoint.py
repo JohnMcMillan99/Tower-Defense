@@ -68,6 +68,8 @@ def snapshot_run(game) -> Dict[str, Any]:
         "bench": [dump_tower(t) for t in game.bench],
         "shop": [dict(card) if card else None for card in (game.shop or [])],
         "loot_bag": list(getattr(game, "loot_bag", None) or []),
+        "loot_misses": int(getattr(game, "loot_misses", 0) or 0),
+        "last_loot_miss": getattr(game, "last_loot_miss", None),
     }
 
 
@@ -127,6 +129,8 @@ def restore_run(game, snap: Dict[str, Any]) -> None:
         game.shop = [dict(card) if card else None for card in shop]
     if "loot_bag" in snap:
         game.loot_bag = list(snap.get("loot_bag") or [])
+    game.loot_misses = int(snap.get("loot_misses", 0) or 0)
+    game.last_loot_miss = snap.get("last_loot_miss")
 
     game.enemy_grid = [[[] for _ in range(game.width)] for _ in range(game.height)]
 

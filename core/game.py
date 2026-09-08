@@ -63,6 +63,8 @@ class Game:
         # Shared loot bag: path tiles + upgrades (limited — use them or lose drops)
         bag_slots = int(LOOT_CONFIG.get("bag_slots", 4))
         self.loot_bag = [None] * bag_slots
+        self.loot_misses = 0
+        self.last_loot_miss = None  # {kind, source, wave} when a drop was refused
         self.selected_tower = None
         self.selected_loot = None  # index into loot_bag (tile or upgrade)
         log_debug("Shop and bench initialized", location="game.py")
@@ -82,6 +84,8 @@ class Game:
         self.spawn_interval = int(WAVE_CONFIG.get("spawn_interval", 30))
         self.wave_bonus_text = ""
         self.wave_bonus_show_until = 0
+        self.adaptation_tell = ""
+        self.adaptation_toast_until = 0
         self.combat_pops = []
         # Single inspector panel (replaces upgrade_dialog / enemy stats / tower stats overlays)
         self.inspector_mode = None  # None | "tower" | "enemy" | "stats"
@@ -101,7 +105,8 @@ class Game:
         self.egrem_flash_bench_idx = None
         self.incompatible_preview = False  # Show "Incompatible" when same-tier towers can't merge
         self.incompatible_show_until = 0   # frame when to auto-clear
-        self.auto_mode = False  # Auto wave toggle
+        self.auto_mode = False  # Auto wave toggle — chains after clear_beat
+        self.clear_beat_until = None  # frame when Auto may start the next wave
         self.web_mode = web_mode  # Flag for reduced load in browser
         self.minimal_mode = minimal_mode  # True = reduced features for debugging/performance
         self.reward_toast_text = ""
@@ -111,6 +116,7 @@ class Game:
         self.intel_max = int(INTEL_CONFIG.get("max_intel", 100))
         # Recent egrem noise injections (decays scout confidence)
         self.noise_injections = 0
+        self.last_egrem_noise = None  # {added, swaps, types, composition_changed}
         # Pre-run Sort setup (directive + modifiers)
         seed = SORT_CONFIG.get("seed")
         self.run_seed = int(seed) if seed is not None else random.randint(0, 2**31 - 1)
@@ -199,6 +205,7 @@ class Game:
         log_debug("Generating initial shop", location="game.py")
         self.economy.generate_shop()
         log_debug("Initial shop generated", location="game.py")
+        self.economy.seed_starting_tiles()
 
         log_debug("Game.__init__ complete", location="game.py")
 

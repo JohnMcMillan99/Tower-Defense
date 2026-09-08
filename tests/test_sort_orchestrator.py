@@ -43,7 +43,7 @@ def test_build_pool_seeded_deterministic():
 def test_orchestrator_next_wave_consumes():
     orch = SortOrchestrator.create(seed=7, planned_waves=5, web_mode=False)
     first = orch.next_wave()
-    assert len(first) == 7  # wave 1 size = 5 + 1*2
+    assert len(first) == 6  # wave 1 = min(cap, 5 + 1)
     second = orch.peek_wave(0)
     assert first != second or len(orch.remaining) == 4
     assert orch.waves_emitted == 1
