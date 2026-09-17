@@ -48,10 +48,12 @@ class Tower:
         self.cooldown = 0
         self.last_shot_target = None
         self.last_shot_frame = 0
+        self.last_shot_style = None  # None | "flame_beam" | "beam"
         self.gold_invested = 0
         self.upgrades = []          # list of upgrade ids
         self.heat = 0.0             # NEW: heat buildup mechanic
         self.max_heat = 10.0
+        self.silence_frames = 0     # latch soak: skip fire while > 0
         self.status_effects = {}    # e.g. {'stun': 120 frames}
         self.buffs = {}             # buff_type: {'amount': val, 'frames_left': int}
 
@@ -97,7 +99,23 @@ class Tower:
                 combo = self._get_hybrid_combo_tag()
                 if combo:
                     base_traits.append(combo)
+        for tag in self._lineage_tags():
+            if tag not in base_traits:
+                base_traits.append(tag)
         return base_traits
+
+    def _lineage_tags(self):
+        """Stable combat tags the swarm can resist (neural / plasma / …)."""
+        from config import ADAPTATION_CONFIG
+        mapping = ((ADAPTATION_CONFIG.get("lineage") or {}).get("tags")) or {}
+        names = [self.base_type]
+        names.extend(self.parents or [])
+        out = []
+        for name in names:
+            tag = mapping.get(name)
+            if tag and tag not in out:
+                out.append(tag)
+        return out
 
     def _get_hybrid_combo_tag(self):
         """Derive hybrid combo tag from parent types (e.g. 'neural_plasma')."""
@@ -212,7 +230,8 @@ class Tower:
             u = UPGRADE_DEFS.get(uid, {})
             if any(s in TOWER_TRAITS.get(self.base_type, []) for s in u.get("synergizes_with", [])):
                 self.dmg = int(self.dmg * 1.10)
-                self.range += 0.2
+                self.range += 1
+        self.range = max(0, int(self.range))
 
     def get_merge_tier(self):
         return self.merge_generation
@@ -290,11 +309,29 @@ class Tower:
         killed = enemy.take_damage(raw_dmg, attacker_tags)
         dealt = hp_before - max(0, enemy.health)
         self.damage_dealt_this_wave += dealt
+        if dealt > 0:
+            game = getattr(self, "game", None)
+            pops = getattr(game, "combat_pops", None) if game is not None else None
+            if pops is not None:
+                pos = enemy.get_position() if hasattr(enemy, "get_position") else None
+                if pos:
+                    pops.append({
+                        "x": pos[0],
+                        "y": pos[1],
+                        "dmg": int(dealt),
+                        "kill": bool(killed),
+                    })
         if killed:
             self.kills_this_wave += 1
         return killed
 
     def update(self, enemies, current_frame, game):
+        if getattr(self, "silence_frames", 0) > 0:
+            self.silence_frames -= 1
+            if self.cooldown > 0:
+                self.cooldown -= 1
+            return None
+
         if 'stun' in self.status_effects and self.status_effects['stun'] > 0:
             self.status_effects['stun'] -= 1
             return None
@@ -357,21 +394,33 @@ class Tower:
             return (None, killed_any) if killed_any else None
 
         elif self.fire_type == "DirectionalBeam":
-            # Shoot a beam in one direction, hitting all tiles in that line
+            # Pierce: damage EVERY living enemy on each tile along the aim line
+            # out to max range (no early exit after first contact).
             killed_any = False
-            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # W, E, N, S
-            dx, dy = directions[self.track_direction]
-            for dist in range(1, self.range + 1):
+            hit_any = False
+            # Indices match inspector labels: 0=W, 1=E, 2=N, 3=S
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            dx, dy = directions[self.track_direction % 4]
+            beam_range = max(1, int(self.range))
+            for dist in range(1, beam_range + 1):
                 nx = self.x + dx * dist
                 ny = self.y + dy * dist
-                if 0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid):
-                    for e in game.enemy_grid[ny][nx][:]:  # copy to avoid modification issues
-                        if e.alive and not e.leaked:
-                            killed = self._damage_enemy(e, self.dmg, attacker_tags)
-                            if killed:
-                                killed_any = True
+                if not (0 <= nx < len(game.enemy_grid[0]) and 0 <= ny < len(game.enemy_grid)):
+                    break
+                for e in game.enemy_grid[ny][nx][:]:
+                    if e.alive and not e.leaked:
+                        hit_any = True
+                        killed = self._damage_enemy(e, self.dmg, attacker_tags)
+                        if killed:
+                            killed_any = True
             self.cooldown = self.fire_rate
-            return (None, killed_any) if killed_any else None
+            # Visual: flame beam always reaches max range in aim direction
+            end_x = self.x + dx * beam_range
+            end_y = self.y + dy * beam_range
+            self.last_shot_target = (end_x, end_y)
+            self.last_shot_frame = current_frame
+            self.last_shot_style = "flame_beam"
+            return (None, killed_any) if (killed_any or hit_any) else None
 
         elif self.fire_type in ("Beam", "TargetBeam"):
             # Find target, damage increases over time on same target
@@ -412,6 +461,7 @@ class Tower:
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
                 self.last_shot_frame = current_frame
+                self.last_shot_style = "beam"
                 return (target, killed)
             else:
                 # Clear beam targets if no target
@@ -450,26 +500,23 @@ class Tower:
                 self.cooldown = self.fire_rate
                 self.last_shot_target = target.get_position()
                 self.last_shot_frame = current_frame
+                self.last_shot_style = "beam"
                 return (target, killed)
             return None
 
     def can_be_latched(self):
-        """
-        Check if this tower can be latched by assimilators.
+        """Assimilators stick to base and hybrid. Pure merges are immune."""
+        return self.get_merge_type() != "pure"
 
-        Returns:
-            bool: True if tower is vulnerable to latching (hybrid), False if immune (pure)
-        """
-        # Check tier_traits.immune from merges.yaml data
-        if hasattr(self, 'game') and self.game and hasattr(self.game, 'data_loader'):
-            tower_data = self.game.data_loader.get_tower_data(self.base_type)
-            if tower_data and 'tier_traits' in tower_data and 'immune' in tower_data['tier_traits']:
-                immune_tiers = tower_data['tier_traits']['immune']
-                if isinstance(immune_tiers, list) and self.merge_generation in immune_tiers:
-                    return False  # Immune at this tier
-
-        # Default: all towers are vulnerable (hybrid) unless specified otherwise
-        return True
+    def apply_latch_payoff(self):
+        """Silence + heat after a completed assimilator soak. Config owns duration."""
+        from config import LATCH_CONFIG
+        frames = max(0, int(LATCH_CONFIG.get("silence_frames", 90)))
+        heat = float(LATCH_CONFIG.get("heat_on_corrupt", 3.0) or 0)
+        self.silence_frames = max(int(getattr(self, "silence_frames", 0) or 0), frames)
+        self.heat = min(self.max_heat, self.heat + heat)
+        if self.heat >= self.max_heat:
+            self.cooldown += 12
 
     def camouflage_repels(self):
         """

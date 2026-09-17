@@ -120,3 +120,97 @@ def test_speed_mult_after_adaptation():
     }
     e.adapt_to_profile(profile, rt)
     assert e.speed_mult > 1.0
+
+
+def test_tell_empty_without_board():
+    from core.strategy_analyzer import tell_from_profile
+    assert tell_from_profile({}) == ""
+    assert tell_from_profile({"_hybrid_exposure": 0.0, "_pure_exposure": 0.0}) == ""
+
+
+def test_tell_pure_lines_latch_safe():
+    from core.strategy_analyzer import tell_from_profile
+    text = tell_from_profile({"_hybrid_exposure": 0.0, "_pure_exposure": 4.0})
+    assert "pure" in text.lower()
+    assert "latch" in text.lower() or "safe" in text.lower()
+
+
+def test_tell_names_hybrid_resist_and_speed():
+    from core.strategy_analyzer import tell_from_profile
+    text = tell_from_profile({"_hybrid_exposure": 4.0})
+    assert "hybrid" in text.lower()
+    assert "-20%" in text
+    assert "+8%" in text
+
+
+def test_neural_lineage_on_base_traits():
+    t = Tower(0, 0, "Neural Processor")
+    assert "neural" in t.get_traits()
+    p = Tower(0, 0, "Plasma Capacitor")
+    assert "plasma" in p.get_traits()
+    assert "neural" not in p.get_traits()
+
+
+def test_one_tower_does_not_trigger_lineage_adapt():
+    game = MockGame([Tower(0, 0, "Neural Processor")])
+    game.round_num = 1
+    profile = StrategyAnalyzer().analyze(game, force=True)
+    e = Enemy([(0, 0), (1, 0)], "Drone", 1)
+    e.adapt_to_profile(profile)
+    assert e.get_resistance(["neural"]) == 1.0
+
+
+def test_mono_neural_resists_neural_not_plasma():
+    game = MockGame([Tower(0, 0, "Neural Processor"), Tower(1, 0, "Neural Processor")])
+    game.round_num = 1
+    profile = StrategyAnalyzer().analyze(game, force=True)
+    assert profile.get("neural", 0) >= 2.0
+    e = Enemy([(0, 0), (1, 0)], "Drone", 1)
+    e.adapt_to_profile(profile)
+    assert e.resistances["neural"] < 1.0
+    hp = e.health
+    e.take_damage(10, attacker_tags=Tower(0, 0, "Neural Processor").get_effective_traits())
+    assert e.health == hp - int(10 * e.resistances["neural"])
+    e2 = Enemy([(0, 0), (1, 0)], "Drone", 1)
+    e2.adapt_to_profile(profile)
+    hp2 = e2.health
+    e2.take_damage(10, attacker_tags=Tower(0, 0, "Plasma Capacitor").get_effective_traits())
+    assert e2.health == hp2 - 10
+
+
+def test_tell_names_lineage():
+    from core.strategy_analyzer import tell_from_profile
+    text = tell_from_profile({"neural": 4.0, "_hybrid_exposure": 0.0, "_pure_exposure": 0.0})
+    assert "neural" in text.lower()
+    assert "-" in text
+
+
+def _pure_at_gen(gen, name="Neural Processor"):
+    layer = [Tower(0, 0, name) for _ in range(2 ** gen)]
+    while len(layer) > 1:
+        layer = [Tower.merge_towers(layer[i], layer[i + 1]) for i in range(0, len(layer), 2)]
+    t = layer[0]
+    assert t.merge_generation == gen
+    return t
+
+
+def test_apex_one_line_resists_harder_than_mixed_gen1():
+    from core.strategy_analyzer import lineage_factor
+
+    apex = [_pure_at_gen(3) for _ in range(3)]
+    mixed = [_pure_at_gen(1, "Neural Processor"), _pure_at_gen(1, "Plasma Capacitor")]
+    apex_profile = StrategyAnalyzer().analyze(MockGame(apex), force=True)
+    mixed_profile = StrategyAnalyzer().analyze(MockGame(mixed), force=True)
+    assert apex_profile.get("_tier_dominate") == "neural"
+    assert "_tier_dominate" not in mixed_profile
+    apex_f = lineage_factor(apex_profile.get("neural", 0))
+    neural_f = lineage_factor(mixed_profile.get("neural", 0))
+    plasma_f = lineage_factor(mixed_profile.get("plasma", 0))
+    assert apex_f > neural_f
+    assert apex_f > plasma_f
+    e_apex = Enemy([(0, 0)], "Drone", 1)
+    e_mix = Enemy([(0, 0)], "Drone", 1)
+    e_apex.adapt_to_profile(apex_profile)
+    e_mix.adapt_to_profile(mixed_profile)
+    assert e_apex.get_resistance(["neural"]) < e_mix.get_resistance(["neural"])
+
