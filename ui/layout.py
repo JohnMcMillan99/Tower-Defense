@@ -144,6 +144,8 @@ class UILayout:
         rect = surf.get_rect(center=(mid_x, cy))
         pad_x, pad_y = self.MERGE_PAD
         rect.inflate_ip(pad_x, pad_y)
+        # Cost is drawn under the label — keep it inside the hitbox
+        rect.height = max(rect.height, (cy + 34) - rect.top)
         return rect
 
     # --- Upgrade bench (deprecated — empty region so clicks fall through) ---

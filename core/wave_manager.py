@@ -272,6 +272,10 @@ class WaveManager:
         self._strategy_profile = attach_combat_hooks(
             self.game, self.strategy_analyzer.analyze(self.game, force=True)
         )
+        self.game.latch_stats = {
+            "assim": 0, "scanned": 0, "targets": 0, "rolls": 0,
+            "sticks": 0, "fails": 0, "soaks": 0, "unlatches": 0, "latched": 0,
+        }
         rt = dict(ADAPTATION_CONFIG)
         tell = tell_from_profile(self._strategy_profile)
         self.game.adaptation_tell = tell
@@ -434,41 +438,110 @@ class WaveManager:
 
         # Assimilator latch (adjacent towers today; hybrid walls never spawn in play)
         if LATCH_CONFIG.get("enabled", True) and hasattr(self.game, 'board') and self.game.board:
+            from config import DEBUG
+            latch_dbg = bool(LATCH_CONFIG.get("debug")) or bool(DEBUG)
+            stats = getattr(self.game, "latch_stats", None)
+            if not isinstance(stats, dict):
+                stats = {
+                    "assim": 0, "scanned": 0, "targets": 0, "rolls": 0,
+                    "sticks": 0, "fails": 0, "soaks": 0, "unlatches": 0,
+                }
+                self.game.latch_stats = stats
             base_chance = float(LATCH_CONFIG.get("chance_base", 0.4))
             base_chance *= float(combat_hooks_from_game(self.game).get("latch_chance_mult", 1.0))
             self.game.board.latch_scan_range = int(LATCH_CONFIG.get("scan_range", 5))
 
             for e in self.game.enemies[:]:
                 # Must be Assimilator subclass (plain Enemy with type "Assimilator" has no latch_to)
-                if not isinstance(e, Assimilator) or getattr(e, 'is_latched', False):
+                if not isinstance(e, Assimilator):
                     continue
+                if getattr(e, 'is_latched', False):
+                    continue
+                stats["assim"] = stats.get("assim", 0)  # live count updated below
                 pos = e.get_position()
-                if pos:
-                    ax, ay = pos
-                    tx, ty, ttype = self.game.board.scan_latch_targets(ax, ay)
-                    if tx is not None:
-                        # Check for repel AoE from pure towers
-                        repel_active = False
-                        for t in self.game.towers:
-                            if t.camouflage_repels():
-                                distance = abs(t.x - ax) + abs(t.y - ay)
-                                if distance <= t.range:
-                                    repel_active = True
-                                    break
+                if not pos:
+                    continue
+                ax, ay = pos
+                stats["scanned"] = int(stats.get("scanned", 0)) + 1
+                tx, ty, ttype = self.game.board.scan_latch_targets(ax, ay)
+                if tx is None:
+                    if latch_dbg and stats["scanned"] % 30 == 1:
+                        latchable = sum(1 for t in self.game.towers if t.can_be_latched())
+                        log_debug("latch_scan_miss", {
+                            "pos": [ax, ay], "latchable_towers": latchable,
+                            "towers": [[t.x, t.y, t.get_merge_type()] for t in self.game.towers[:8]],
+                        }, location="wave_manager.latch")
+                    continue
+                stats["targets"] = int(stats.get("targets", 0)) + 1
+                # Check for repel AoE from pure towers
+                repel_active = False
+                for t in self.game.towers:
+                    if t.camouflage_repels():
+                        distance = abs(t.x - ax) + abs(t.y - ay)
+                        if distance <= t.range:
+                            repel_active = True
+                            break
 
-                        if not repel_active:
-                            if random.random() < base_chance:
-                                if e.latch_to(tx, ty, ttype, self.game.board.wall_manager):
-                                    if ttype == 'wall':
-                                        wall = self.game.board.wall_manager.get_wall(tx, ty)
-                                        if wall:
-                                            e.stack_count = wall.get_latch_count()
-                                    e.set_game_reference(self.game)
+                if repel_active:
+                    if latch_dbg:
+                        log_debug("latch_repelled", {"pos": [ax, ay], "target": [tx, ty, ttype]},
+                                  location="wave_manager.latch")
+                    continue
+                stats["rolls"] = int(stats.get("rolls", 0)) + 1
+                if random.random() < base_chance:
+                    if not hasattr(e, "game") or e.game is None:
+                        e.set_game_reference(self.game)
+                    if e.latch_to(tx, ty, ttype, self.game.board.wall_manager):
+                        stats["sticks"] = int(stats.get("sticks", 0)) + 1
+                        if ttype == 'wall':
+                            wall = self.game.board.wall_manager.get_wall(tx, ty)
+                            if wall:
+                                e.stack_count = wall.get_latch_count()
+                        e.set_game_reference(self.game)
+                        if latch_dbg:
+                            log_debug("latch_stick", {
+                                "pos": [ax, ay], "target": [tx, ty], "type": ttype,
+                                "chance": base_chance, "progress": e.assimilate_progress,
+                            }, location="wave_manager.latch")
+                    else:
+                        stats["fails"] = int(stats.get("fails", 0)) + 1
+                        if latch_dbg:
+                            log_debug("latch_fail", {
+                                "pos": [ax, ay], "target": [tx, ty], "type": ttype,
+                                "has_game": bool(getattr(e, "game", None)),
+                            }, location="wave_manager.latch")
+
+            stats["assim"] = sum(
+                1 for e in self.game.enemies
+                if isinstance(e, Assimilator) and not getattr(e, "is_latched", False)
+            )
+            stats["latched"] = sum(
+                1 for e in self.game.enemies
+                if isinstance(e, Assimilator) and getattr(e, "is_latched", False)
+            )
 
         # Update latched assimilators
-        for e in self.game.enemies[:]:
-            if getattr(e, 'is_latched', False):
+        if hasattr(self.game, "board") and self.game.board:
+            for e in self.game.enemies[:]:
+                if not getattr(e, "is_latched", False):
+                    continue
+                before = e.assimilate_progress
+                was = e.is_latched
+                target = e.latch_target
                 e.update_latch(self.game.board.wall_manager)
+                stats = getattr(self.game, "latch_stats", None)
+                if not (isinstance(stats, dict) and was and not e.is_latched):
+                    continue
+                soaked = False
+                if target:
+                    for t in self.game.towers:
+                        if (t.x, t.y) == tuple(target) and getattr(t, "silence_frames", 0) > 0:
+                            soaked = True
+                            break
+                if soaked or before >= 0.99:
+                    stats["soaks"] = int(stats.get("soaks", 0)) + 1
+                else:
+                    stats["unlatches"] = int(stats.get("unlatches", 0)) + 1
 
         # Integrity drain (0.02/stack)
         self.game.integrity_tick()

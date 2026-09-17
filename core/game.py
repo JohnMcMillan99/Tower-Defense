@@ -87,6 +87,11 @@ class Game:
         self.adaptation_tell = ""
         self.adaptation_toast_until = 0
         self.combat_pops = []
+        # Latch debug counters (reset each wave start; Dev Tools latch.debug logs too)
+        self.latch_stats = {
+            "assim": 0, "scanned": 0, "targets": 0, "rolls": 0,
+            "sticks": 0, "fails": 0, "soaks": 0, "unlatches": 0,
+        }
         # Single inspector panel (replaces upgrade_dialog / enemy stats / tower stats overlays)
         self.inspector_mode = None  # None | "tower" | "enemy" | "stats"
         self.inspector_tower = None

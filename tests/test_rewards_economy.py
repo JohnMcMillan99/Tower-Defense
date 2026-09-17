@@ -181,3 +181,25 @@ def test_egrem_gold_charged_on_confirm_only():
     assert gold_after_preview == 50
     assert eco._complete_egrem() is True
     assert game.gold < 50
+
+
+def test_egrem_preview_shows_even_when_broke():
+    """Wrong-tier selection must keep the egrem affordance; gold is confirm-only."""
+    from models.tower import Tower
+
+    game = _make_game()
+    game.gold = 0
+    game.bench[0] = Tower(0, 0, "Neural Processor")
+    game.bench[1] = Tower(0, 0, "Plasma Capacitor")
+    game.bench[1].merge_generation = 1
+    game.bench[1]._calculate_stats()
+    eco = EconomyManager(game)
+    eco.select_for_merge(0, frame=1)
+    assert eco.select_for_merge(1, frame=1) is True
+    assert game.egrem_preview is True
+    assert game.merge_tower_2 == 1
+    assert game.current_merge_cost > 0
+    assert eco._complete_egrem() is False
+    assert game.egrem_preview is True
+    assert game.bench[0] is not None and game.bench[1] is not None
+    assert "Need $" in (game.reward_toast_text or "")

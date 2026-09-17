@@ -118,20 +118,21 @@ class SwarmCluster:
     def draw(self, surface):
         """Draw the swarm cluster with pulsing effect."""
         pulse = math.sin(self.pulse_timer) * 0.3 + 0.7
-        current_radius = int(self.radius * pulse * self.intensity)
+        current_radius = max(1, int(self.radius * pulse * self.intensity))
+        cx, cy = int(self.pos[0]), int(self.pos[1])
 
         # Draw outer glow
         glow_color = (int(self.color[0] * 0.5), int(self.color[1] * 0.5), int(self.color[2] * 0.5))
         if GFXDRAW_AVAILABLE:
             pygame.gfxdraw.filled_circle(
                 surface,
-                self.pos[0],
-                self.pos[1],
+                cx,
+                cy,
                 current_radius + 3,
-                (*glow_color, 100)
+                glow_color,
             )
         else:
-            pygame.draw.circle(surface, glow_color, self.pos, current_radius + 3, 1)
+            pygame.draw.circle(surface, glow_color, (cx, cy), current_radius + 3, 1)
 
         # Draw main cluster
         cluster_color = (
@@ -142,35 +143,39 @@ class SwarmCluster:
         if GFXDRAW_AVAILABLE:
             pygame.gfxdraw.filled_circle(
                 surface,
-                self.pos[0],
-                self.pos[1],
+                cx,
+                cy,
                 current_radius,
-                (*cluster_color, 200)
+                cluster_color,
             )
         else:
-            pygame.draw.circle(surface, cluster_color, self.pos, current_radius)
+            pygame.draw.circle(surface, cluster_color, (cx, cy), current_radius)
 
         # Draw tendrils extending from cluster
-        self._draw_tendrils(surface, current_radius)
+        self._draw_tendrils(surface, current_radius, cx, cy)
 
-    def _draw_tendrils(self, surface, cluster_radius):
+    def _draw_tendrils(self, surface, cluster_radius, cx=None, cy=None):
         """Draw corruption tendrils extending from the cluster."""
         tendril_count = min(self.enemy_count, 8)  # Max 8 tendrils
+        if cx is None:
+            cx = int(self.pos[0])
+        if cy is None:
+            cy = int(self.pos[1])
 
         for i in range(tendril_count):
             angle = (i / tendril_count) * 2 * math.pi
             length = cluster_radius + random.uniform(5, 15)
 
-            end_x = self.pos[0] + math.cos(angle) * length
-            end_y = self.pos[1] + math.sin(angle) * length
+            end_x = cx + math.cos(angle) * length
+            end_y = cy + math.sin(angle) * length
 
             # Draw tendril line
-            tendril_color = (*self.color[:3], 150)
+            tendril_color = self.color[:3]
             pygame.draw.line(
                 surface,
                 tendril_color,
-                (self.pos[0], self.pos[1]),
-                (end_x, end_y),
+                (cx, cy),
+                (int(end_x), int(end_y)),
                 2
             )
 
@@ -344,9 +349,12 @@ class SwarmFXManager:
             stack_count: Number of assimilators in stack
             world_to_screen: Function to convert world coords to screen coords
         """
-        # Convert positions to screen coordinates
+        # Convert positions to screen coordinates (gfxdraw requires ints)
         assim_screen = world_to_screen(assimilator_pos[0], assimilator_pos[1])
         target_screen = world_to_screen(target_pos[0], target_pos[1])
+        assim_screen = (int(assim_screen[0]), int(assim_screen[1]))
+        target_screen = (int(target_screen[0]), int(target_screen[1]))
+        stack_count = max(1, int(stack_count or 1))
 
         # Draw tendrils - red curved lines from assimilator to target
         if GFXDRAW_AVAILABLE:
@@ -424,38 +432,38 @@ class SwarmFXManager:
 
     def _draw_latch_particles(self, surface, center_pos, stack_count):
         """Draw particle effects at latch target."""
-        center_x, center_y = center_pos
+        center_x = int(center_pos[0])
+        center_y = int(center_pos[1])
+        stack_count = max(1, int(stack_count or 1))
 
         # Scale particle count and size with stack
         particle_count = min(stack_count * 2, 20)  # Up to 20 particles
-        base_radius = 5 + stack_count  # 5 + stack for radius scaling
+        base_radius = int(5 + stack_count)  # 5 + stack for radius scaling
 
         # Draw filled circles for dense swarm effect when stack >= 5
         if stack_count >= 5:
-            # Outer glow circle
-            glow_color = (255, 100, 100, 100)  # Semi-transparent red
-            for r in range(base_radius + 5, base_radius - 1, -1):
-                alpha = 255 - (r - base_radius) * 20
-                color = (255, 100, 100, max(50, alpha))
+            # Outer glow circle (gfxdraw wants RGB ints, not RGBA)
+            for r in range(base_radius + 5, max(base_radius - 1, 1), -1):
+                color = (255, 100, 100)
                 if GFXDRAW_AVAILABLE:
-                    pygame.gfxdraw.filled_circle(surface, center_x, center_y, r, color)
+                    pygame.gfxdraw.filled_circle(surface, center_x, center_y, int(r), color)
                 else:
-                    pygame.draw.circle(surface, color, (center_x, center_y), r)
+                    pygame.draw.circle(surface, color, (center_x, center_y), int(r))
 
         # Draw individual particles
         for i in range(particle_count):
             angle = (i / particle_count) * 2 * math.pi
             distance = random.uniform(base_radius * 0.5, base_radius * 1.5)
-            x = center_x + math.cos(angle) * distance
-            y = center_y + math.sin(angle) * distance
+            x = int(center_x + math.cos(angle) * distance)
+            y = int(center_y + math.sin(angle) * distance)
 
-            size = random.uniform(1, 3)
+            size = max(1, int(random.uniform(1, 3)))
             color = (255, random.randint(50, 150), 50)
 
             if GFXDRAW_AVAILABLE:
-                pygame.gfxdraw.filled_circle(surface, int(x), int(y), int(size), color)
+                pygame.gfxdraw.filled_circle(surface, x, y, size, color)
             else:
-                pygame.draw.circle(surface, color, (int(x), int(y)), int(size))
+                pygame.draw.circle(surface, color, (x, y), size)
 
     def clear_latch_effects(self):
         """Clear all latch-related visual effects."""

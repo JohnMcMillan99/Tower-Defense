@@ -380,16 +380,14 @@ class EconomyManager:
         base_cost = max(5, base_cost)
         cost = int(base_cost * 1.3)
         self.game.current_merge_cost = cost
-        if self.game.gold < cost:
-            self.game.merge_tower_2 = None
-            self.game.egrem_preview = False
-            self.game.current_merge_cost = 0
-            return False
+        # Match normal merge: always show the confirm affordance. Gold is
+        # checked in _complete_egrem — do not clear the selection here.
         self.game.egrem_consecutive += 1
         self.game.egrem_preview = True
+        self.game.merge_preview = None
+        self.game.incompatible_preview = False
         self.game.egrem_flash_until = frame + 120
         self.game.egrem_flash_bench_idx = self.game.merge_tower_2
-        self.game.merge_preview = None
         return True
 
     def _complete_egrem(self):
@@ -400,6 +398,7 @@ class EconomyManager:
             return False
         cost = self.game.current_merge_cost
         if self.game.gold < cost:
+            self._set_reward_toast(f"Need ${cost} for egrem")
             return False
         self.game.gold -= cost
         self.game.egrem_total_spent += cost

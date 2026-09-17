@@ -131,6 +131,8 @@ LATCH_CONFIG = {
     "fill_per_frame": 0.01,    # corruption per frame before stack mult
     "silence_frames": 90,      # tower skip-fire after a completed soak (~1.5s)
     "heat_on_corrupt": 3.0,    # extra heat applied with the silence
+    # Dev: when True (or config.DEBUG), latch scan/stick/soak write debug.log
+    "debug": False,
 }
 
 # ---------------------------------------------------------------------------

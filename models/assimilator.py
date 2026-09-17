@@ -209,9 +209,13 @@ class Assimilator(Enemy):
         return info
 
     def _get_tower_at(self, x, y):
-        """Helper to get tower at position (needs game reference)."""
-        # This should be passed in or accessed via game reference
-        # For now, return None - will be implemented when integrated
+        """Get tower at position using game reference."""
+        if not hasattr(self, 'game') or not self.game:
+            return None
+
+        for tower in self.game.towers:
+            if tower.x == x and tower.y == y:
+                return tower
         return None
 
     def _can_latch_tower(self, tower):
@@ -221,13 +225,3 @@ class Assimilator(Enemy):
     def set_game_reference(self, game):
         """Set game reference for accessing towers."""
         self.game = game
-
-    def _get_tower_at(self, x, y):
-        """Get tower at position using game reference."""
-        if not hasattr(self, 'game') or not self.game:
-            return None
-
-        for tower in self.game.towers:
-            if tower.x == x and tower.y == y:
-                return tower
-        return None

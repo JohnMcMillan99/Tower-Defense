@@ -570,7 +570,10 @@ class Renderer:
 
             # Draw cost (merge/egrem only; incompatible has no cost)
             if "cost" in preview_info:
-                cost_surf = self.font_s.render(f"${preview_info['cost']}", True, preview_info.get("cost_color", self.TEXT))
+                cost = preview_info["cost"]
+                can_pay = self.game.gold >= cost
+                cost_col = preview_info.get("cost_color", self.TEXT) if can_pay else (220, 90, 90)
+                cost_surf = self.font_s.render(f"${cost}", True, cost_col)
                 self.screen.blit(cost_surf, (mid_x - cost_surf.get_width()//2, mid_y + 18))
 
     def stats_toggle_rect(self):
