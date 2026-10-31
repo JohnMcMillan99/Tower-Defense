@@ -208,29 +208,40 @@ def test_latch_progress(board_manager):
     # (This is a stub - actual implementation would need timing measurements)
 
 
-def test_pure_repel(game, board_manager):
-    """Test that pure towers repel assimilators in AoE."""
-    # Create a tower with camouflage active
-    tower = Tower(7, 5, "Oscillator")
-    tower.game = game  # Set game reference
-    game.towers.append(tower)
+def test_pure_tower_is_latch_immune(game, board_manager):
+    pure = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Neural Processor"),
+    )
+    pure.x, pure.y = 6, 5
+    pure.game = game
+    game.towers.append(pure)
+    assert pure.get_merge_type() == "pure"
+    assert pure.can_be_latched() is False
+    tx, ty, ttype = board_manager.scan_latch_targets(5, 5)
+    assert tx is None
+    assert ty is None
+    assert ttype is None
 
-    # Enable camouflage meta-unlock
-    if not hasattr(game, 'meta_unlocks_active'):
-        game.meta_unlocks_active = set()
-    game.meta_unlocks_active.add('enable_camouflage')
 
-    # Create assimilator near the tower
-    assimilator = Assimilator([(5, 5), (6, 5)], wave_num=9)
-    assimilator.set_game_reference(game)
+def test_hybrid_tower_is_latch_target(game, board_manager):
+    hybrid = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Plasma Capacitor"),
+    )
+    hybrid.x, hybrid.y = 6, 5
+    hybrid.game = game
+    game.towers.append(hybrid)
+    assert hybrid.get_merge_type() == "hybrid"
+    assert hybrid.can_be_latched() is True
+    tx, ty, ttype = board_manager.scan_latch_targets(5, 5)
+    assert (tx, ty, ttype) == (6, 5, "tower")
 
-    # Scan for latch targets - should not find tower due to repel
-    target_x, target_y, target_type = board_manager.scan_latch_targets(5, 5)
 
-    # Should not find the tower (repelled)
-    # Note: This test assumes tower.can_be_latched() returns False for pure towers
-    # and camouflage_repels() returns True when meta-unlock is active
-    assert target_x != 7 or target_y != 5  # Should not target the repelling tower
+def test_base_tower_is_latch_vulnerable():
+    base = Tower(0, 0, "Neural Processor")
+    assert base.get_merge_type() == "base"
+    assert base.can_be_latched() is True
 
 
 def test_integrity_drain(game):
@@ -256,3 +267,53 @@ def test_integrity_drain(game):
     expected_decrease = 0.02 * 1 * 10  # 0.02 per stack per frame * 1 stack * 10 frames
 
     assert abs((initial_integrity - final_integrity) - expected_decrease) < 0.01
+
+
+def test_tower_soak_silences_then_unlatches(game, board_manager):
+    from config import LATCH_CONFIG
+
+    hybrid = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Plasma Capacitor"),
+    )
+    hybrid.x, hybrid.y = 6, 5
+    hybrid.game = game
+    game.towers.append(hybrid)
+    assim = Assimilator([(5, 5), (6, 5)], wave_num=9)
+    assim.set_game_reference(game)
+    game.enemies.append(assim)
+    assert assim.latch_to(6, 5, "tower", board_manager.wall_manager)
+    for _ in range(120):
+        assim.update_latch(board_manager.wall_manager)
+        if not assim.is_latched:
+            break
+    assert assim.is_latched is False
+    assert hybrid.silence_frames == int(LATCH_CONFIG["silence_frames"])
+    assert hybrid.heat >= float(LATCH_CONFIG["heat_on_corrupt"])
+
+
+def test_kill_unlatches_tower(game, board_manager):
+    hybrid = Tower.merge_towers(
+        Tower(0, 0, "Neural Processor"),
+        Tower(0, 0, "Plasma Capacitor"),
+    )
+    hybrid.x, hybrid.y = 6, 5
+    hybrid.game = game
+    game.towers.append(hybrid)
+    assim = Assimilator([(5, 5), (6, 5)], wave_num=9)
+    assim.set_game_reference(game)
+    game.enemies.append(assim)
+    assim.latch_to(6, 5, "tower", board_manager.wall_manager)
+    assert assim.is_latched is True
+    assim.take_damage(10_000)
+    assert assim.alive is False
+    assert assim.is_latched is False
+
+
+def test_silenced_tower_skips_fire():
+    t = Tower(0, 0, "Neural Processor")
+    t.silence_frames = 3
+    t.heat = 0.0
+    t.update([], 0, None)
+    assert t.silence_frames == 2
+    assert t.heat == 0.0

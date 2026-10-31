@@ -1,0 +1,20 @@
+# Meta unlock stubs for Sort Directives / pre-run modifiers (Slice E).
+# Future: persistent unlock progress writes here or to a save file.
+meta_sort:
+  directives:
+    - PowerSort
+    - DescendingSpike
+    - DroneBubble
+    - AssimilationMerge
+    - PivotPartition
+    - PriorityExtract
+    - ResistanceBucket
+  modifiers:
+    - dense_swarm
+    - thin_signal
+    - speed_skew
+    - armor_skew
+    - elite_injection
+    - early_unlock
+  starting_intel_bonus: 0
+  notes: "Stub table — wire to persistent meta progression later."

@@ -1,410 +1,201 @@
 # Tower Defense 3: Borg Assimilation
 
-A Borg-themed tower defense roguelike with a **merge-based tower progression system**. Combine towers to create stronger variants, manage a limited bench, and defend against waves of assimilating enemies.
+A Borg-themed tower defense roguelike. Buy hardware, merge it, grow the path, and survive an 80-wave Sort. The swarm adapts to what you actually placed.
 
-## Overview
+**Theme**: Assimilation and adaptation — towers are network nodes; enemies are drones that learn your board.
 
-**Theme**: Star Trek Borg Collective - Assimilation & Adaptation
-- Towers represent Borg network nodes/modifications that evolve through "assimilation" (merging)
-- Enemies are Borg drones at various adaptation levels, growing stronger as they assimilate
-- Upgrade progression mirrors biological and technological adaptation
-
-**Core Mechanic**: 2-for-1 Tower Merging with Tier Progression
-- Buy towers from the shop, place them on a 10-slot bench
-- Drag benched towers to the grid or merge two towers of the **same tier**
-- Merged towers inherit both parents' stats + bonuses (dmg +50%, range +1, fire_rate +20%)
-- Tier system prevents rushing: must combine base towers before combining merged ones
-- Lineage tracking shows merge history through parent tree
+**Core verb**: 2-for-1 merge. Same-tier towers combine. Pure lines stay latch-immune; hybrids hit harder and the swarm notices.
 
 ---
 
-## Current Features
+## Play loop
 
-### ✅ Implemented Systems
+1. **Main menu** — pick a save slot (profile Dilithium + unlocks persist).
+2. **Run select** — New Run, Continue (last WaveClear checkpoint), or Collective shop.
+3. **Compile** — pick one of three Sort Directives plus 0–2 modifiers.
+4. **In-run** — shop towers, merge on the 5-slot bench, place on the grid, spend the 4-slot loot bag (path tiles + upgrades share it). Shop, place, and merge stay legal while enemies are on the map.
+5. **WaveClear** — checkpoint. Quit mid-wave forfeits the run. Wave 80 is victory.
 
-#### 1. **Shop & Bench Management**
-- **5-slot shop** with reroll button (cost: 2 gold)
-- **3-way shop toggle** (T/M/U): cycles between **Towers**, **Map Tiles**, and **Upgrades**
-- **10-slot tower bench** below shop for tower inventory
-- **3-slot map tile bench** (bottom left) for expansion tiles
-- **3-slot upgrade bench** (bottom right) for purchased upgrades
-- Click shop cards to add to appropriate bench based on current mode
-- Reroll refreshes shop slots for current mode
+Auto mode chains waves with a 2-second clear beat. Target clock: ~20 minutes to wave 80, typical death around wave 45–50 (~12 minutes).
 
-#### 2. **Tower Types** (5 Borg-themed hardware components)
+---
 
-| Tower | Color | Base DMG | Range | Fire Rate | Fire Type | Role |
-|-------|-------|----------|-------|-----------|-----------|------|
-| **Neural Processor** | Blue | 6 | 2 | 1 | TargetBeam | Balanced targeting |
-| **Plasma Capacitor** | Green | 10 | 2 | 4 | Ball | Burst damage |
-| **Thermal Regulator** | Orange | 4 | 3 | 2 | DirectionalBeam | Area denial |
-| **Signal Router** | Purple | 7 | 4 | 2 | Track | Path control |
-| **Quantum Field Gen** | Yellow | 2 | 99 | 10 | Overwatch | Global coverage |
-| **Nanite Swarm** | Dark Grey | 0 | 0 | 0 | Spawner | Enemy generation |
+## How to run
 
-#### 3. **Tower Merging System**
-- **2-for-1 Merge**: Combine 2 towers → 1 stronger tower
-- **Tier-based Locking**: Only towers at the same tier can merge
-  - Tier 0: Base towers (no parents)
-  - Tier 1: Merged once (2 parents)
-  - Tier 2: Merged twice (4 parents)
-  - Tier N: Merged N times (2^N parents)
-- **Merge Stat Bonuses**:
-  - Damage: +50% per merge level
-  - Range: +1 per merge level
-  - Fire Rate: +20% per merge level
-- **Visual Preview**: Green highlight box shows which two towers would merge
-- **Confirm/Cancel UI**: Accept or reject merge before committing
+Python **3.11+**. Use the project venv (pygame is installed there).
 
-#### 4. **Enemy Types** (5 Borg adaptation levels)
+```powershell
+cd "c:\Users\Johnm\Tower Defense"
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python main.py
+python main.py --minimal
+```
 
-| Enemy | HP | Speed | Difficulty | First Wave | Description |
-|-------|----|----|------------|------------|---|
-| **Drone** | 10 | 1.0 | 1.0 | Wave 1 | Basic foot soldiers |
-| **Scout** | 15 | 1.5 | 1.2 | Wave 3 | Fast recon units |
-| **Harvester** | 25 | 0.8 | 1.5 | Wave 5 | Resource gatherers |
-| **Adaptor** | 35 | 1.2 | 1.8 | Wave 7 | Adaptive combatants |
-| **Assimilator** | 50 | 1.0 | 2.0 | Wave 9 | Queen-class threats |
+Browser (pygbag), from the **parent** of this folder:
 
-#### 5. **Wave-Based Difficulty System**
-- **Progressive Enemy Unlock**: New enemy types introduced at specific waves
-  - Waves 1-2: Drones only
-  - Waves 3+: Drones + Scouts
-  - Waves 5+: Add Harvesters
-  - Waves 7+: Add Adaptors
-  - Waves 9+: Add Assimilators
-- **Stat Scaling**: Enemy HP scales per wave: `HP = base_hp × (1 + (wave - 1) × 0.2 × difficulty)`
-- **Wave Control**: Play/Pause button, Next Wave button, manual wave triggering
+```powershell
+pygbag "Tower Defense"
+```
 
-#### 6. **Tile-Based Map Expansion**
-- **Purchasable map tiles**: Straight, Left Turn, Right Turn, Loop (from tiles shop mode)
-- **Path connection**: Tiles must connect to existing paths; rotation support (0°, 90°, 180°, 270°)
-- **Map tile bench**: 3 slots; select tile, rotate with A/D or &lt;/&gt; buttons, place on grid
-- **Dynamic grid expansion**: Grid grows when tiles extend beyond current bounds
+Then open http://localhost:8000. Web mode scales enemy counts down.
 
-#### 7. **Upgrade Shop & Bench**
-- **Upgrade shop mode**: Buy upgrades from shop (12 types: synergistic + wildcard)
-- **Upgrade bench**: 3 slots in bottom-right; store purchased upgrades
-- **Apply flow**: Select upgrade from bench → click tower on grid to apply
-- **Upgrade capacity**: 3 upgrades per tower (configurable per tower type for balancing)
-- **Visual feedback**: Green/red tower borders when upgrade selected (can/cannot apply)
-- **Keyboard shortcuts**: 1–3 keys select upgrade bench slots
+Set `DEBUG = True` in `config.py` to write `debug.log`.
 
-#### 8. **Visual Interface** (Pygame)
-- Procedurally generated path grid with expandable borders
-- Shop at top; tower bench, map tile bench, upgrade bench
-- Right panel: wave controls, pause, auto mode, tower stats when selected
-- Camera: pan (arrow keys / middle-drag), zoom (mouse wheel)
-- Enemy path overlaid on grid; tower and enemy rendering with Borg-themed colors
+---
 
-#### 9. **Game Flow**
-- Enemy path generated procedurally via PathGenerator (from utils/path_generator.py)
-- Towers placed on grid interact with passing enemies
-- Tower damage calculation: `dmg = base_dmg × fire_rate`
-- Enemy pathfinding along generated path
-- Wave progression with enemy spawning at intervals
+## Controls
+
+| Input | Action |
+|-------|--------|
+| Click shop card | Buy onto the tower bench |
+| Reroll | Refresh the tower shop (3 gold) |
+| Click bench tower, then grid | Place |
+| Click two same-tier bench towers | Merge preview; confirm or egrem (wrong-tier) |
+| Right-click bench / grid tower | Sell (partial refund) |
+| 1–4 | Select loot-bag slot |
+| Selected path tile + A / D or rotate buttons | Rotate; click path end to place |
+| Selected upgrade + click tower | Apply (3 upgrades per tower) |
+| Next Wave / Auto | Start or chain waves |
+| Esc | Pause (Resume / Forfeit). Settings is a stub |
+| Arrow keys / middle-drag | Pan |
+| Mouse wheel | Zoom |
+| Home | Reset camera |
+
+---
+
+## Shipped systems
+
+### Shop, bench, loot
+
+- **5-slot tower shop** only. No T/M/U mode toggle.
+- **5-slot tower bench**. Collective "Aux Rack" adds a sixth on the next New Run.
+- **4-slot shared loot bag** — path tiles and upgrades compete. A full bag refuses the drop and records a miss (`loot_misses`). There is no displace UI.
+- New Run seeds one Straight tile. Mini-boss (every 5) and boss (every 20) grant a tile plus an upgrade. Egrem kills can drop a tile.
+- Starting gold 25, lives 20. Kill and wave gold are halved vs the old economy. Sell bench 50%; sell from grid 45%.
+
+### Towers
+
+| Tower | Color | DMG | Range | Fire rate | Fire type | Role |
+|-------|-------|-----|-------|-----------|-----------|------|
+| Neural Processor | Blue | 6 | 2 | 1 | TargetBeam | Balanced |
+| Plasma Capacitor | Green | 10 | 2 | 4 | Ball | Burst |
+| Thermal Regulator | Orange | 4 | 3 | 2 | DirectionalBeam | Area denial |
+| Signal Router | Purple | 7 | 4 | 2 | Track | Path control |
+| Quantum Field Gen | Yellow | 2 | 99 | 10 | Overwatch | Global |
+| Nanite Swarm | Dark grey | 0 | 0 | 0 | Spawner | Wrong-tier egrem result |
+
+Merge same tier → one stronger tower (damage ×1.5, range +1, fire rate ×1.2 per generation, plus purity bonuses). Wrong-tier confirm is **egrem**: costs gold, leaves a Nanite Swarm, injects noise, and can type-swap the next wave.
+
+Pure merge (same lineage) is latch-immune. Hybrid merge is stronger and gives the swarm resist + speed.
+
+### Enemies
+
+| Enemy | HP | Speed | First wave | Notes |
+|-------|----|-------|------------|-------|
+| Drone | 10 | 10 | 1 | Basic |
+| Scout | 8 | 6 | 3 | Fast |
+| Harvester | 15 | 12 | 5 | Tanky |
+| Adaptor | 20 | 8 | 7 | Mid |
+| Assimilator | 25 | 10 | 9 | Can latch adjacent base/hybrid towers |
+
+HP scales with wave: `HP = base × (1 + (wave-1) × hp_scale_per_wave × difficulty)`. Default `hp_scale_per_wave` is 3.5. Mini-boss / boss waves also apply HP and speed mults from `REWARD_CONFIG`.
+
+### Sort Directives
+
+Compile picks the run's wave order **and** a combat hook (`DIRECTIVE_COMBAT` in `config.py`):
+
+| Directive | Wave shape | Combat hook |
+|-----------|------------|-------------|
+| Power Sort | Weak → strong | Slightly less lineage resist |
+| Descending Spike | Hard open | Lineage adapt starts sooner |
+| Drone Bubble | Local shuffles | Lower latch chance |
+| Assimilation Merge | Mono runs, then mash | Higher latch chance |
+| Pivot Partition | Tease, elite, high side | Faster latch fill |
+| Priority Extract | Clumps then a pop | Hybrid speed up |
+| Resistance Bucket | Type-tagged stretches | Stronger lineage resist |
+
+Round Guide shows intel (Contact → Scan → Tap → Matrix). Egrem kills raise intel and can scramble the next forecast.
+
+### Combat depth (live)
+
+- **Adaptation** — each wave, the swarm resists the lineages and hybrid tags you stacked. Mono boards get eaten.
+- **Latch** — Assimilators stick to adjacent **towers** (not walls). Soak silences the tower and adds heat; killing the virus unlatches. Pure merges are immune.
+- **Path tiles** — placing a tile lengthens the track (more shots, more latch surface).
+- **Milestone spikes** — waves 5/10/15/20… hit harder and drop loot.
+
+### Screens and saves
+
+- App stack: Main menu → Run select → In-run. Esc pause is an overlay.
+- Profile save (`saves/profiles.json`): Dilithium, Collective unlocks, WaveClear checkpoint.
+- Checkpoint is a **build** snapshot only (gold, path, towers, bench, shop, loot, Sort cursor). Combat is never saved. Mid-wave quit = forfeit.
+- Collective (3 live patches, Dilithium): Aux Rack (+1 bench), Cache Flush (reroll costs 1), Seed Capacitor (+5 start gold). Applies on the next New Run.
+
+### HUD
+
+Shop (5/8) + loot bag (3/8) over the tower bench. Right rail: CORE (wave, gold, lives, intel), Round Guide stamps, inspector. Circuit Relic glyphs are procedural 32×32 (PNG in `assets/glyphs/` overrides). Dev Tools (menus only) expose combat / economy knobs.
 
 ---
 
 ## Architecture
 
-### File Structure
 ```
 Tower Defense/
-├── main.py             # Entry point (run with: python main.py or python main.py --minimal)
-├── config.py           # DEBUG flag, log_debug (set DEBUG=True for troubleshooting)
-├── requirements.txt    # Dependencies (pygame, pytest, pygbag, PyYAML)
-├── TD3_README.md       # This file
-├── core/               # Game logic
-│   ├── game.py        # Game state and orchestration
-│   ├── economy.py     # Shop, bench, merge, egrem logic
-│   ├── wave_manager.py # Enemy spawning and wave updates
-│   └── board.py       # Wall placement, latch mechanics (Circuit Stronghold)
-├── models/
-│   ├── enemy.py       # Enemy types and behavior
-│   ├── assimilator.py # Assimilator with Swarm Latch
-│   ├── tower.py       # Tower model with merge/upgrade logic
-│   └── path_wall.py   # Path wall for latch targets
-├── ui/
-│   ├── renderer.py    # Pygame drawing and camera
-│   ├── events.py      # Input handling
-│   └── swarm_fx.py    # Swarm visual effects
-├── data/
-│   ├── loader.py      # YAML data loader (merges, enemies, meta_unlocks)
-│   ├── tiles.py       # Map expansion tile definitions
-│   ├── units.py       # Tower types and traits
-│   ├── upgrades.py    # Software upgrade definitions
-│   └── yaml/          # merges.yaml, enemies.yaml, meta_unlocks.yaml, assimilators.yaml,
-│                       # traits.yaml, augment_rules.yaml, event_waves.yaml
-├── map/
-│   ├── path_graph.py      # Path connectivity for tile placement
-│   └── augment_manager.py # Cell augments, corruption mechanics
+├── main.py                 # pygame + pygbag loop; constructs App
+├── config.py               # All live tunables (economy, waves, adapt, latch, intel, clock)
 ├── core/
-│   └── strategy_analyzer.py # Tower trait aggregation for enemy adaptation
-├── utils/
-│   └── path_generator.py  # Map path generation (canonical; TD3.py is deprecated)
-├── legacy/            # Deprecated code (td_visual.py)
-└── tests/             # Unit tests (pytest) – test_purity.py, test_adaptation.py, test_augments.py
+│   ├── app.py              # Screen stack, Compile, pause, Collective, save hooks
+│   ├── game.py             # Run state
+│   ├── economy.py          # Shop, bench, merge, loot bag, egrem
+│   ├── wave_manager.py     # Spawn, latch tick, milestones, Auto clock
+│   ├── sort_directives.py  # Seven directive restructure() impls
+│   ├── sort_orchestrator.py
+│   ├── run_setup.py        # Compile offer → RunSetup
+│   ├── strategy_analyzer.py
+│   ├── save.py / checkpoint.py
+│   ├── collective.py       # Three Dilithium patches
+│   └── board.py            # Latch scan; walls exist in API only
+├── models/                 # tower, enemy, assimilator, path_wall
+├── ui/                     # layout, renderer, events, glyphs, swarm_fx, devtools
+├── data/yaml/              # merges, enemies, traits, event waves, unused meta tables
+├── map/                    # path_graph, augment_manager (cell effects unwired)
+├── tests/
+└── tools/                  # latch_probe, sort_harness
 ```
 
-### Core Classes
-
-#### `Tower` (models/tower.py)
-```python
-class Tower:
-    UPGRADE_CAPACITY = 3  # Max upgrades per tower
-
-    def __init__(self, x, y, tower_type, parents=None)
-    def _calculate_stats(self)          # Base + lineage + upgrade stats
-    def merge_towers(tower1, tower2)    # Static: handles pure + hybrid trees
-    def can_merge(tower1, tower2)       # Static: same-tier + type/hybrid check
-    def calculate_purity(self) -> float # 0-100 purity score
-    def get_traits(self)                # Base + auto-generated purity/hybrid tags
-    def get_display_name(self)          # YAML naming rules (Enhanced/Advanced/Apex)
-    def get_merge_tier(self)            # Returns merge_generation
-    def get_effective_traits(self)      # Base + upgrade traits
-```
-
-#### `Enemy` (models/enemy.py)
-```python
-class Enemy:
-    TYPES = {
-        "Drone": {"health": 10, "speed": 1.0, "difficulty": 1.0, ...},
-        # ... 4 more types
-    }
-    
-    def __init__(self, x, y, enemy_type, wave_num)
-    def _calculate_stats(self)  # Scales health based on wave_num
-```
-
-#### `Game` (core/game.py)
-- Central state manager
-- Manages shop (5 slots), tower bench (10 slots), map tile bench (3), upgrade bench (3)
-- Shop modes: `economy.generate_shop()` for towers/tiles/upgrades
-- Merging: `economy.select_for_merge()`, `confirm_merge()`, `cancel_merge()`, `_complete_egrem()`
-- Upgrades: `economy.apply_upgrade_from_bench()`, `move_to_bench()` for all modes
-- Map expansion: `can_place_tile()`, `place_map_tile()`, `expand_grid()`
-- Wave spawning: `wave_manager.start_next_wave()`, `update_wave()`
-- Supports `--minimal` flag for reduced features (debugging/performance)
-
-#### Main Pygame Loop (main.py)
-- 60 FPS game loop (async for pygbag/browser)
-- Event handling via `EventHandler` (clicks for shop/bench/grid, drag operations)
-- Drawing via `Renderer` (shop cards, bench, grid, towers, enemies)
-- Wave updates via `game.wave_manager.update_wave()`
+Tune combat in `config.py` (and Dev Tools). YAML is for merge trees, traits, and event-wave rosters — not the HP/latch knobs.
 
 ---
 
-## Borg Theme & Lore
+## Tests
 
-### Design Philosophy
-The game mirrors Borg assimilation mechanics:
-- **Towers** = Network nodes that adapt & grow stronger through assimilation (merging)
-- **Merging** = Assimilation process combining two systems into one
-- **Enemy Waves** = Progressive drone adaptation levels, becoming harder as they "assimilate" defenses
-- **Tier System** = Biological/technological hierarchy in Borg collective
+Project venv:
 
-### Enemy Progression Narrative
-1. **Drones** (Waves 1-2): Basic foot soldiers, low threat
-2. **Scouts** (Waves 3+): Reconnaissance units, faster, learning patrol patterns
-3. **Harvesters** (Waves 5+): Gather resources from defense matrix
-4. **Adaptors** (Waves 7+): High-level combat specialists, counter tower strategies
-5. **Assimilators** (Waves 9+): Queen-level threats, apex of adaptation
-
-### Tower Types as Specializations
-- **Neural Processor** = Balanced targeting (switch, logic)
-- **Plasma Capacitor** = Burst damage (charge, burst)
-- **Thermal Regulator** = Area denial (resist, heat)
-- **Signal Router** = Path control (block, flow)
-- **Quantum Field Gen** = Global coverage (filter, magnetic)
-- **Nanite Swarm** = Egrem spawner (wrong-tier merge result)
-
----
-
-## How to Run
-
-### Setup
 ```powershell
-cd "c:\Users\Johnm\Tower Defense"
-python -m venv .venv                    # Create virtual env with Python 3.11
-.venv\Scripts\Activate.ps1              # Activate
-pip install -r requirements.txt         # Install pygame
+.\.venv\Scripts\python.exe -m pytest tests/test_adaptation.py tests/test_wave_pressure.py tests/test_sort_directives.py tests/test_path_tiles.py tests/test_rewards_economy.py tests/test_slice_d.py tests/test_run_loop.py -q
 ```
 
-### Run Game
-
-#### Desktop (Local)
-```powershell
-python main.py              # Full features
-python main.py --minimal    # Reduced features (debugging/performance)
-```
-
-#### Browser (Web)
-```powershell
-pip install pygbag  # Install pygbag for browser packaging
-pygbag "Tower Defense"  # From parent directory of Tower Defense/
-```
-Then open [http://localhost:8000](http://localhost:8000) in your browser and click to start the game. Note: Browser mode runs with reduced enemy counts for performance.
-
-### Debug Logging
-
-Set `DEBUG = True` in `config.py` to enable debug logging to `debug.log`. Useful for troubleshooting startup or rendering issues.
-
-### Controls
-- **Shop mode toggle (T/M/U)** → Cycle towers / map tiles / upgrades
-- **Click shop card** → Add to bench (tower, tile, or upgrade depending on mode)
-- **Reroll (R)** → Refresh shop (cost: 2 gold)
-- **Select tower from bench** → Click to place on grid
-- **Select tower for merge** → Click two same-tier towers; click Merge/egrem to confirm
-- **Right-click bench tower** → Sell (50% refund)
-- **Map tiles**: Select from bench → rotate with A/D or &lt;/&gt; → click grid to place
-- **Upgrades**: Buy in shop → select from upgrade bench (click or 1–3 keys) → click tower to apply
-- **Right-click upgrade bench** → Deselect upgrade
-- **Click placed tower** → Open upgrade dialog (stats, sell, close)
-- **Arrow keys / middle-drag** → Pan camera; **mouse wheel** → Zoom
-- **Play/Pause / Next Wave / Auto** → Wave controls
+Do not run `tests/test_runtime.py`, `tests/test_quick_run.py`, or `tests/test_rendering_issue.py` under pytest — they open a display.
 
 ---
 
-## Current State & Testing
+## Parked (not regressions)
 
-### ✅ What Works
-- **Shop**: 3-way toggle (towers/tiles/upgrades), 5-slot shop, reroll
-- **Benches**: Tower bench (10), map tile bench (3), upgrade bench (3)
-- **Tower merging**: Tier restrictions, preview, confirm; Egrem (wrong-tier) spawning towers
-- **Tile-based expansion**: Purchasable tiles, rotation, path connection, dynamic grid growth
-- **Upgrade shop & bench**: Buy upgrades, store in bench, apply to towers (3 capacity each)
-- **Upgrade system**: Trait synergies, heat mechanics, 12 upgrade types
-- **Enemy system**: 5 types, progressive unlock, debuffs (slow, stun)
-- **Wave scaling**: Staggered spawning, auto mode, gold/lives
-- **Tower fire types**: Beam, ball, directional, track, overwatch, radius, spawner
-- **Camera**: Pan (arrows/middle-drag), zoom (mouse wheel)
+Intentionally out of the current play build:
 
-### 🟡 Partially Tested
-- Tower damage calculations (implemented but balance needs tuning)
-- Enemy movement speed and debuff effects
-- Upgrade synergies and heat/overheat mechanics
-- Egrem spawning balance
+- Path walls / `initialize_from_map` — latch-to-wall is test-only
+- Cell augments / `apply_cell_effects_to_tower` — tags can stamp; they do not change combat
+- Loot displace UI — full bag misses
+- `tft_timer` prep clock
+- Settings, audio, Relic PNGs, pygbag juice
+- `meta_unlocks.yaml` / `meta_sort.yaml` — not wired; Collective is the three stubs
+- `assimilators.yaml` — unused; live latch is `LATCH_CONFIG`
 
-### ❌ Major Gaps / Future Features
-- **Tower Merge Complexity**: Generic tier progression. Missing unique combinations, merge trees, strategic depth.
-- **Enemy Adaptation**: Static types. Missing dynamic response to player strategies.
-- **Enemy Difficulty Tiers**: Types don't map to normal/elite/mini-boss/boss/event with tied scaling.
-- **Per-Tower Upgrade Capacity**: Currently 3 for all; tune individually for balancing.
-- **Performance Optimizations**: Spatial hashing, object pooling for larger maps/enemies.
-- **Sound/Music**: Audio effects (volume button is placeholder).
-- **Difficulty Modes**: Hard, Hardcore variants.
-- **Leaderboard**: High score tracking.
+Known leftovers (not parked features): right-click rotate can also sell if the cursor is over a tower; same-tier merge confirm is silent when you cannot afford it; HUD Play is a no-op (use Esc).
 
 ---
 
-## Notes for Future Development
+## Dependencies
 
-### Performance Considerations
-- Enemy movement slowed to every 4 frames (prevents frame-rate dependent speed)
-- Can optimize further with spatial hashing for collision detection if enemy count >100
-
-### Balance Tuning Opportunities
-- Tower damage values calibrated for ~3 waves of testing
-- Enemy spawn rates, density, and wave structure can be adjusted
-- Merge bonus percentages (+50% dmg, +1 range) can be tweaked for progression curve
-
-### Code Structure for Additions
-- **New Tower Type**: Add to `Tower.BASE_TYPES` dict with stats, or define in `merges.yaml` hybrid_trees
-- **New Hybrid Combo**: Add entry to `hybrid_trees` in `data/yaml/merges.yaml` – no code changes needed
-- **New Enemy Type**: Add to `Enemy.TYPES` dict, update `spawn_wave()` unlock logic
-- **New Wave Mechanic**: Modify `Game.update_wave()` and wave loop in main pygame function
-- **New Augment**: Add entry to `data/yaml/augment_rules.yaml` – picked up automatically
-- **New Event Wave**: Add entry to `data/yaml/event_waves.yaml` – triggers on matching wave number
-- **Tuning Trait Bonuses**: Edit `data/yaml/traits.yaml` (pure_lineage, exponential_bonus, hybrid penalties)
-
-### Dependencies
-- **Python 3.11.2** (required for full compatibility)
-- **Pygame 2.0+** (2.6.1 currently installed)
-- **PyYAML** (6.0+) for YAML data loading
-- **TD3.PathGenerator** (map path generation algorithm)
-
----
-
-## Development History
-
-1. **Phase 1**: Created TD3.py PathGenerator prototype with console shop/inventory system
-2. **Phase 2**: Added pygame visualization and game loop
-3. **Phase 3**: Implemented shop UI, bench system (10 slots), tower placement
-4. **Phase 4**: Built tower merging system with parent tracking and tier restriction
-5. **Phase 5**: Expanded to 5 tower types with Borg theme and wave-based control
-6. **Phase 6**: Implemented 5 enemy types with progressive unlock and difficulty scaling
-7. **Phase 7**: Fixed tower rendering (attribute refactor from `.type` → `.base_type`)
-8. **Phase 8**: Cleaned up TD3.py (removed unused code), kept only PathGenerator
-9. **Phase 9**: Implemented gold economy loops (purchase costs, kill rewards, interest bonuses)
-10. **Phase 10**: Added game over screen with restart button and final stats display
-11. **Phase 11**: Implemented staggered enemy spawning (queue-based) to prevent overwhelming waves
-12. **Phase 12**: Fixed bench-to-grid placement workflow and added bench selling (right-click for 50% refund)
-13. **Phase 13**: Tile-based map expansion (purchasable tiles, rotation, path connection, dynamic grid)
-14. **Phase 14**: 3-way shop toggle (towers/tiles/upgrades), upgrade shop, upgrade bench, apply-from-bench flow
-15. **Phase 15**: Tower upgrade capacity (3 per tower), visual feedback for upgrade application
-16. **Phase 16**: Tower Lineage & Purity system – pure merges give exponential bonuses, hybrid trees create curated combo towers (Cortex Assimilator, Thermal Router, Quantum Burst Engine, Neural Field Generator)
-17. **Phase 17**: Enemy Adaptation – StrategyAnalyzer tracks tower traits; enemies gain resistances to hybrid towers and speed boosts via YAML resistance_tables
-18. **Phase 18**: Map Augments & Corruption – AugmentManager adds cell buffs/debuffs after tile threshold; corruption obstacles on expansion
-19. **Phase 19**: Event waves from YAML, FPS display, debug logging for purity/exposure/corruption
-
-Current focus: All core systems implemented and data-driven via YAML. Next: balance tuning, sound/music, difficulty modes.
-
----
-
-## Phased Development Roadmap
-
-### Phase 1: Expanding Grid System (Completed)
-**Goal**: Implement tile-based map expansion with shop rotation.
-- **Tile-Based Expansion**: Purchasable map tiles (Straight, Left/Right Turn, Loop) with embedded paths.
-- **Path Connection**: Tiles must connect to existing paths, with rotation support (0–270°).
-- **Shop Rotation**: Cycles between Towers, Map Tiles, Upgrades (T/M/U toggle).
-- **Upgrade Shop & Bench**: Buy upgrades from shop, store in 3-slot bench, apply to towers.
-- **Status**: Implemented.
-
-### Phase 2: Tower Lineage & Purity System (Implemented)
-**Goal**: Make pure merges exponentially rewarding; hybrids risky but curated.
-- **Purity Score**: 0–100 based on parent matching; 100 = all parents same type.
-- **Pure Path**: Exponential bonuses (dmg, range, fire_rate) per generation via `traits.yaml`.
-- **Hybrid Trees**: 4 curated combos in `merges.yaml` (Neural+Plasma → Cortex Assimilator, etc.).
-- **Display Names**: Pure gen naming ("Enhanced", "Advanced", "Apex"); hybrid names from YAML.
-- **Trait Tags**: Auto-generated from base_type + merge lineage; used across all systems.
-- **UI**: Bench cards show purity %, Pure/Hybrid badge, display name.
-- **Status**: Implemented. 21 tests passing.
-
-### Phase 3: Enemy Adaptation & Counter System (Implemented)
-**Goal**: Enemies adapt to player strategy; hybrid exposure increases resistance.
-- **Strategy Analyzer**: `core/strategy_analyzer.py` – aggregates tower trait tags every 3 waves.
-- **Resistance Tables**: `enemies.yaml` defines factor_per_point, max_factor, target tags.
-- **Enemy Adaptation**: `adapt_to_profile()` sets per-tag damage resistance and speed boost.
-- **Damage Integration**: `take_damage(dmg, attacker_tags)` applies resistances.
-- **Status**: Implemented. 8 tests passing.
-
-### Phase 4: Map Augments & Corruption (Implemented)
-**Goal**: Risk/reward for map expansion.
-- **Corruption**: After N tiles placed (configurable), obstacles spawn with probability.
-- **Cell Augments**: `augment_rules.yaml` defines per-cell stat modifiers (range boost, slow zone).
-- **Tile Traits**: Each tile type has traits (path_short, risk_high, etc.) for future expansion.
-- **AugmentManager**: Tracks tiles_placed, manages cell augments, applies effects to towers.
-- **Status**: Implemented. 8 tests passing.
-
-### Phase 5: Advanced Mechanics Integration (Implemented)
-**Goal**: Tie systems together; events; performance; balance tuning.
-- **Event Waves**: `event_waves.yaml` defines special compositions with HP/speed multipliers.
-- **FPS Display**: Rendered when `DEBUG=True` or `show_fps` enabled.
-- **Debug Logging**: Purity snapshots, exposure profiles, corruption counts logged per wave.
-- **Status**: Implemented.
-
-### Legacy Roadmap (Completed/Outdated)
-
-| Feature / Fix | Status | Notes |
-|---------------|--------|-------|
-| **Gold on kill + interest mechanic** | ✅ Done | Fully implemented |
-| **Staggered enemy spawning** | ✅ Done | Queue-based system active |
-| **Game Over + Restart screen** | ✅ Done | With final stats display |
-| **Bench placement workflow** | ✅ Done | Click-to-select, place on grid |
-| **Sell from bench** | ✅ Done | Right-click for 50% refund |
-| **Upgrade system** | ✅ Done | Traits, synergies, heat mechanics |
-| **Tile-based expansion** | ✅ Done | Purchasable tiles, rotation, path connection |
-| **Upgrade shop & bench** | ✅ Done | 3-way shop, upgrade bench, apply-from-bench flow |
-| **Auto wave mode** | ✅ Done | Toggle for automatic progression |
+- Python 3.11+ (3.11.2 used in the project venv)
+- pygame 2.0+, PyYAML 6.0+, pytest 7.0+, pygbag 0.9+ (see `requirements.txt`)
